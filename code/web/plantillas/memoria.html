@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block titulo %}Memoria del sistema{% endblock %}
+{% block contenido %}
+
+<div class="tarjeta">
+  <h2>Qué sabe el sistema</h2>
+  <div class="cuerpo">
+    <p class="apagado" style="margin-bottom:18px">
+      La memoria está indexada <b>por contenido, no por componente</b>: lo aprendido en una
+      unidad se aplica a las siguientes. Son dos memorias distintas a propósito — las
+      traducciones se aplican solas; las equivalencias territoriales se proponen al editor,
+      porque dependen de la materia y no de la lengua.
+    </p>
+    <div class="rejilla r4">
+      <div><div class="cifra">{{ resumen.frases }}</div>
+           <div class="cifra-pie">frases traducidas</div></div>
+      <div><div class="cifra">{{ resumen.equivalencias }}</div>
+           <div class="cifra-pie">equivalencias territoriales</div></div>
+      <div><div class="cifra">{{ resumen.equivalencias_aprobadas }}</div>
+           <div class="cifra-pie">equivalencias aprobadas</div></div>
+      <div><div class="cifra">{{ resumen.frases_por_par|length }}</div>
+           <div class="cifra-pie">pares de lenguas</div></div>
+    </div>
+
+    <div class="rejilla r2" style="margin-top:22px">
+      <div>
+        <label>Por par de lenguas</label>
+        {% for par, total in resumen.frases_por_par.items() %}
+          <div class="linea">
+            <span class="mono">{{ par }}</span> — {{ total }} frases</div>
+        {% else %}<p class="apagado">Ninguna todavía.</p>{% endfor %}
+      </div>
+      <div>
+        <label>Equivalencias por territorio</label>
+        {% for territorio, total in resumen.equivalencias_por_territorio.items() %}
+          <div class="linea">
+            {{ territorio }} — {{ total }}</div>
+        {% else %}<p class="apagado">Ninguna todavía.</p>{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tarjeta">
+  <h2>Buscar en la memoria</h2>
+  <div class="cuerpo">
+    <form method="get" style="display:flex;gap:10px;align-items:flex-end">
+      <div style="flex:1">
+        <label for="buscar">Texto</label>
+        <input type="text" id="buscar" name="buscar" value="{{ buscar }}"
+               placeholder="Una palabra o una frase, en origen o en destino">
+      </div>
+      <button type="submit">Buscar</button>
+    </form>
+  </div>
+
+  {% if resultados %}
+    {% if resultados.frases %}
+    <table>
+      <thead><tr><th>Par</th><th>Origen</th><th>Destino</th><th>Usos</th><th>De dónde</th></tr></thead>
+      <tbody>
+      {% for f in resultados.frases %}
+        <tr><td class="mono">{{ f.par }}</td><td>{{ f.origen[:160] }}</td>
+            <td>{{ f.destino[:160] }}</td><td>{{ f.veces_usada }}</td>
+            <td class="apagado">{{ f.procedencia or '—' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if resultados.equivalencias %}
+    <table style="margin-top:10px">
+      <thead><tr><th>Territorio</th><th>Concepto</th><th>Equivalente</th><th>Aprobada</th></tr></thead>
+      <tbody>
+      {% for e in resultados.equivalencias %}
+        <tr><td>{{ e.territorio or '—' }}</td><td>{{ e.concepto[:150] }}</td>
+            <td>{{ e.propuesta[:150] }}</td>
+            <td>{% if e.aprobada %}<span class="etiqueta e-listo">sí</span>
+                {% else %}<span class="etiqueta e-pendiente">no</span>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if not resultados.frases and not resultados.equivalencias %}
+      <div class="cuerpo"><p class="apagado">Sin coincidencias.</p></div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

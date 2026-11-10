@@ -1,0 +1,9 @@
+site_name: "Documentación"
+site_description: Herramienta para realizar adaptaciones curriculares y traducciones sobre contenido smartED
+plugins:
+  - techdocs-core
+nav:
+  - Introducción: README.md
+  - LEEME: LEEME.md
+  - Despliegue: DESPLIEGUE.md
+

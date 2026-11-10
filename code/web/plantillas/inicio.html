@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block contenido %}
+
+{% if error %}<div class="aviso">{{ error }}</div>{% endif %}
+{% if request.query_params.get('borrado') %}
+<div class="aviso ok">Trabajo {{ request.query_params.get('borrado') }} borrado. Queda una copia en el servidor por si hubiera que recuperarlo.</div>
+{% endif %}
+
+<div class="rejilla r2">
+  <div class="tarjeta">
+    <h2>1 · Subir una unidad</h2>
+    <div class="cuerpo">
+      <form action="/subir" method="post" enctype="multipart/form-data">
+        <label for="fichero">Paquete publicado (zip) o fuente de Author</label>
+        <input type="file" id="fichero" name="fichero" accept=".zip" multiple required>
+        <p class="apagado" style="margin:10px 0 16px">
+          Del fuente de Author, sube a la vez el zip de la unidad y los de sus actividades,
+          o un zip que los contenga. Se descarga en el mismo formato en que se sube.
+          Se guarda tal cual y no se modifica: todo lo que se genere sale de una copia.
+        </p>
+        <button type="submit">Subir</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>2 · Encargar el trabajo</h2>
+    <div class="cuerpo">
+      {% if paquetes %}
+      <form action="/procesar" method="post">
+        <label for="paquete_id">Unidad</label>
+        <select id="paquete_id" name="paquete_id" required>
+          {% for p in paquetes %}
+          <option value="{{ p.id }}">{{ p.titulo or p.nombre }}{% if p.formato == 'author' %} [fuente de Author]{% endif %} — {{ p.componentes }} componentes
+            {%- if p.idioma_origen %} ({{ p.idioma_origen }}){% endif %}</option>
+          {% endfor %}
+        </select>
+
+        <div class="rejilla r2" style="margin-top:14px">
+          <div>
+            <label for="tipo">Qué hay que hacer</label>
+            <select id="tipo" name="tipo" onchange="conmutar()">
+              <option value="traduccion">Traducir</option>
+              <option value="adaptacion">Adaptación curricular</option>
+            </select>
+          </div>
+          <div id="caja-idioma">
+            <label for="idioma_destino">Idioma de destino</label>
+            <select id="idioma_destino" name="idioma_destino">
+              {% for codigo, nombre in opciones.idiomas.items() %}
+              <option value="{{ codigo }}">{{ nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div id="caja-comunidad" style="display:none">
+            <label for="comunidad">Comunidad autónoma</label>
+            <select id="comunidad" name="comunidad" onchange="sugerirIdioma()">
+              {% for c in opciones.comunidades %}
+              <option value="{{ c }}">{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <p class="apagado" id="pista-idioma" style="margin-top:10px;display:none">
+          Una adaptación curricular también fija el idioma de la unidad. Para las
+          comunidades con lengua propia se propone la suya; puedes cambiarlo si lo que
+          quieres es la versión castellana del mismo currículo.
+        </p>
+
+        <label style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:14px">
+          <input type="checkbox" name="regenerar_imagenes" value="1" checked>
+          Regenerar las imágenes con texto (rótulos traducidos; tarda más)</label>
+
+        <p style="margin:16px 0"><button type="submit">Procesar</button></p>
+      </form>
+      {% else %}
+      <p class="apagado">Sube primero una unidad.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="s-segmentado pestanas" role="tablist" aria-label="Trabajos y unidades">
+  <button type="button" role="tab" id="pestana-trabajos" aria-controls="panel-trabajos" aria-selected="true">Trabajos ({{ trabajos|length }})</button>
+  <button type="button" role="tab" id="pestana-unidades" aria-controls="panel-unidades" aria-selected="false" tabindex="-1">Unidades subidas ({{ paquetes|length }})</button>
+</div>
+
+<div class="tarjeta" role="tabpanel" id="panel-trabajos" aria-labelledby="pestana-trabajos">
+  <h2 style="display:flex;align-items:center;gap:16px">Trabajos
+    <span style="margin-left:auto;font-size:var(--fs-small);font-weight:400">
+      {% if mios %}<a href="/">Ver todos</a>{% else %}<a href="/?mios=1">Ver solo los míos</a>{% endif %}
+    </span></h2>
+  {% if trabajos %}
+  <div class="cuerpo buscador" data-tabla="tabla-trabajos" role="search" aria-label="Buscar trabajos">
+    <div class="filtros">
+      <div class="ancho"><label for="bt-texto">Buscar</label>
+        <input type="search" id="bt-texto" data-campo="texto" placeholder="Unidad, número, destino o persona"></div>
+      <div><label for="bt-tipo">Encargo</label>
+        <select id="bt-tipo" data-campo="tipo"><option value="">Todos</option>
+          <option value="traduccion">Traducción</option><option value="adaptacion">Adaptación</option></select></div>
+      <div><label for="bt-destino">Destino</label>
+        <select id="bt-destino" data-campo="destino"><option value="">Todos</option>
+          {% for v in filtros.destinos %}<option>{{ v }}</option>{% endfor %}</select></div>
+      <div><label for="bt-curso">Curso</label>
+        <select id="bt-curso" data-campo="curso"><option value="">Todos</option>
+          {% for v in filtros.cursos %}<option>{{ v }}</option>{% endfor %}</select></div>
+      <div><label for="bt-materia">Materia</label>
+        <select id="bt-materia" data-campo="materia"><option value="">Todas</option>
+          {% for v in filtros.materias %}<option>{{ v }}</option>{% endfor %}</select></div>
+      <div><label for="bt-revision">Revisión</label>
+        <select id="bt-revision" data-campo="revision"><option value="">Todas</option>
+          <option value="pendiente">Pendiente</option><option value="revisado">Revisado</option></select></div>
+      <div><label for="bt-autor">Encargado por</label>
+        <select id="bt-autor" data-campo="autor"><option value="">Cualquiera</option>
+          {% for v in filtros.autores %}<option>{{ v }}</option>{% endfor %}</select></div>
+    </div>
+    <p class="apagado recuento" aria-live="polite"></p>
+  </div>
+  <table id="tabla-trabajos">
+    <thead><tr>
+      <th>#</th><th>Unidad</th><th>Encargo</th><th>Estado</th><th>Revisión</th>
+      <th>Adaptados</th><th>Pendientes</th><th>Creado</th><th>Quién trabaja</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for t in trabajos %}
+      <tr data-texto="{{ t.id }} {{ t.paquete }} {{ t.titulo or '' }} {{ t.destino }} {{ t.creado_por or '' }} {{ t.en_uso.nombre if t.en_uso else '' }} {{ t.materia_texto }} {{ t.curso_texto }}"
+          data-tipo="{{ t.tipo }}" data-destino="{{ t.destino }}" data-curso="{{ t.curso_texto }}"
+          data-materia="{{ t.materia_texto }}" data-revision="{{ t.estado_revision if t.estado == 'listo' else '' }}"
+          data-autor="{{ t.creado_por or '' }}">
+        <td class="mono">{{ t.id }}</td>
+        <td>{{ t.titulo or t.paquete }}{% if t.titulo and t.titulo != t.paquete %}<br><span class="apagado">{{ t.paquete }}</span>{% endif %}
+          {%- if t.curso_texto or t.materia_texto %}<br><span class="apagado">{{ [t.curso_texto, t.materia_texto] | select | join(' · ') }}</span>{% endif %}</td>
+        <td>{{ 'Traducción' if t.tipo == 'traduccion' else 'Adaptación' }}
+            → <b>{{ t.destino }}</b></td>
+        <td><span class="etiqueta e-{{ t.estado }}">{{ t.estado }}</span></td>
+        <td>
+          {% if t.estado == 'listo' %}
+          <span class="etiqueta e-{{ t.estado_revision }}">{{ t.estado_revision }}</span>
+          {% else %}<span class="apagado">—</span>{% endif %}
+        </td>
+        <td>{{ t.elementos_adaptados }} <span class="apagado">/ {{ t.elementos_totales }}</span></td>
+        <td>{{ t.terminos_pendientes }}</td>
+        <td class="nowrap">{{ t.creado_en | hora }}{% if t.creado_por %}<br><span class="apagado">{{ t.creado_por }}</span>{% endif %}</td>
+        <td class="nowrap">
+          {% if t.en_uso %}
+            <span class="etiqueta {{ 'e-listo' if t.en_uso.mio else 'e-pendiente' }}" title="Desde las {{ t.en_uso.desde | hora }}; queda libre a las {{ t.en_uso.caduca | hora }} si no hay actividad">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              {{ 'Tú' if t.en_uso.mio else t.en_uso.nombre }}</span>
+            <br><span class="apagado">activo {{ t.en_uso.ultima_actividad | hora }}</span>
+          {% else %}
+            <span class="apagado">Libre{% if t.ultima_actividad %}<br>último uso {{ t.ultima_actividad | hora }}{% endif %}</span>
+          {% endif %}
+        </td>
+        <td><a href="/trabajo/{{ t.id }}">{{ 'Consultar' if t.en_uso and not t.en_uso.mio else 'Abrir' }}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="cuerpo"><p class="apagado">{{ 'No tienes ningún trabajo.' if mios else 'Ningún trabajo todavía.' }}</p></div>{% endif %}
+</div>
+
+<div class="tarjeta" role="tabpanel" id="panel-unidades" aria-labelledby="pestana-unidades" hidden>
+  <h2>Unidades subidas</h2>
+  {% if paquetes %}
+  <div class="cuerpo buscador" data-tabla="tabla-unidades" role="search" aria-label="Buscar unidades">
+    <div class="filtros">
+      <div class="ancho"><label for="bu-texto">Buscar</label>
+        <input type="search" id="bu-texto" data-campo="texto" placeholder="Título, fichero o persona"></div>
+      <div><label for="bu-curso">Curso</label>
+        <select id="bu-curso" data-campo="curso"><option value="">Todos</option>
+          {% for v in filtros.cursos %}<option>{{ v }}</option>{% endfor %}</select></div>
+      <div><label for="bu-materia">Materia</label>
+        <select id="bu-materia" data-campo="materia"><option value="">Todas</option>
+          {% for v in filtros.materias %}<option>{{ v }}</option>{% endfor %}</select></div>
+      <div><label for="bu-idioma">Idioma</label>
+        <select id="bu-idioma" data-campo="idioma"><option value="">Todos</option>
+          {% for v in filtros.idiomas %}<option value="{{ v }}">{{ opciones.idiomas.get(v, v) }}</option>{% endfor %}</select></div>
+      <div><label for="bu-formato">Formato</label>
+        <select id="bu-formato" data-campo="formato"><option value="">Todos</option>
+          <option value="maker">Paquete publicado</option><option value="author">Fuente de Author</option></select></div>
+    </div>
+    <p class="apagado recuento" aria-live="polite"></p>
+  </div>
+  <table id="tabla-unidades">
+    <thead><tr>
+      <th>#</th><th>Unidad</th><th>Plantilla</th><th>Idioma</th>
+      <th>Componentes</th><th>Lecciones</th><th>Subida</th><th>Original</th>
+    </tr></thead>
+    <tbody>
+    {% for p in paquetes %}
+      <tr data-texto="{{ p.id }} {{ p.titulo or '' }} {{ p.nombre }} {{ p.subido_por or '' }} {{ p.materia_texto }} {{ p.curso_texto }}"
+          data-curso="{{ p.curso_texto }}" data-materia="{{ p.materia_texto }}"
+          data-idioma="{{ p.idioma_origen or '' }}" data-formato="{{ p.formato }}">
+        <td class="mono">{{ p.id }}</td>
+        <td><b>{{ p.titulo or p.nombre }}</b><br><span class="apagado">{{ p.nombre }}
+          {%- if p.formato == 'author' %} · fuente de Author{% endif %}
+          {%- if p.curso_texto or p.materia_texto %} · {{ [p.curso_texto, p.materia_texto] | select | join(' · ') }}{% endif %}</span>
+          {%- if p.notas %}<br><span class="error-texto">{{ p.notas }}</span>{% endif %}</td>
+        <td class="apagado">{{ p.plantilla or '—' }}</td>
+        <td class="mono">{{ p.idioma_origen or '—' }}</td>
+        <td>{{ p.componentes }}</td>
+        <td>{{ p.lecciones }}</td>
+        <td class="nowrap">{{ p.subido_en | hora }}{% if p.subido_por %}<br><span class="apagado">{{ p.subido_por }}</span>{% endif %}</td>
+        <td>{% if p.formato != 'author' %}<a href="/original/{{ p.id }}/index.html" target="_blank">Ver original</a>{% else %}<span class="apagado">sin vista previa</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="cuerpo"><p class="apagado">Todavía no hay ninguna.</p></div>{% endif %}
+</div>
+
+<script>
+// Pestañas: Trabajos primero, que es lo que se consulta a diario. `#unidades` abre la otra
+// (se vuelve ahí después de subir una unidad).
+(function () {
+  var pestanas = Array.prototype.slice.call(document.querySelectorAll('.pestanas [role="tab"]'));
+  function elegir(pestana, foco) {
+    pestanas.forEach(function (p) {
+      var activa = p === pestana;
+      p.setAttribute('aria-selected', activa);
+      p.tabIndex = activa ? 0 : -1;
+      document.getElementById(p.getAttribute('aria-controls')).hidden = !activa;
+    });
+    if (foco) pestana.focus();
+    history.replaceState(null, '', pestana.id === 'pestana-unidades' ? '#unidades' : location.pathname + location.search);
+  }
+  pestanas.forEach(function (p, i) {
+    p.addEventListener('click', function () { elegir(p); });
+    p.addEventListener('keydown', function (e) {
+      var paso = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (paso) elegir(pestanas[(i + paso + pestanas.length) % pestanas.length], true);
+    });
+  });
+  if (location.hash === '#unidades') elegir(pestanas[1]);
+})();
+
+// Buscadores: texto libre (sin mayúsculas ni tildes, todas las palabras) y desplegables
+// que filtran por coincidencia exacta. Se filtra en el navegador: la lista ya está entera.
+(function () {
+  function normal(s) {
+    return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  }
+  document.querySelectorAll('.buscador').forEach(function (caja) {
+    var filas = Array.prototype.slice.call(
+      document.querySelectorAll('#' + caja.dataset.tabla + ' tbody tr'));
+    var campos = Array.prototype.slice.call(caja.querySelectorAll('[data-campo]'));
+    var recuento = caja.querySelector('.recuento');
+    filas.forEach(function (f) { f._texto = normal(f.dataset.texto); });
+    function filtrar() {
+      var palabras = [], exactos = [], vistas = 0;
+      campos.forEach(function (c) {
+        if (c.dataset.campo === 'texto') palabras = normal(c.value).split(/\s+/).filter(Boolean);
+        else if (c.value) exactos.push([c.dataset.campo, c.value]);
+      });
+      filas.forEach(function (f) {
+        var ok = palabras.every(function (p) { return f._texto.indexOf(p) !== -1; }) &&
+                 exactos.every(function (e) { return f.dataset[e[0]] === e[1]; });
+        f.hidden = !ok;
+        if (ok) vistas++;
+      });
+      recuento.textContent = (palabras.length || exactos.length)
+        ? vistas + ' de ' + filas.length + (vistas === 0 ? ': ninguno cumple la búsqueda.' : '')
+        : '';
+    }
+    campos.forEach(function (c) { c.addEventListener(c.tagName === 'SELECT' ? 'change' : 'input', filtrar); });
+    filtrar();
+  });
+})();
+
+var IDIOMA_POR_COMUNIDAD = {{ opciones.idioma_por_comunidad | tojson }};
+
+function conmutar() {
+  var adaptacion = document.getElementById('tipo').value === 'adaptacion';
+  // El idioma se pide siempre: una adaptación curricular también decide en qué lengua
+  // queda la unidad.
+  document.getElementById('caja-comunidad').style.display = adaptacion ? '' : 'none';
+  document.getElementById('pista-idioma').style.display = adaptacion ? '' : 'none';
+  if (adaptacion) sugerirIdioma();
+}
+
+function sugerirIdioma() {
+  var comunidad = document.getElementById('comunidad').value;
+  document.getElementById('idioma_destino').value = IDIOMA_POR_COMUNIDAD[comunidad] || 'es';
+}
+</script>
+{% endblock %}

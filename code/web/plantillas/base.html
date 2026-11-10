@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}Adaptación de contenidos{% endblock %} · Sarela</title>
+<link rel="icon" href="/_tema/logos/sarela-tile.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/_tema/tokens.css">
+<link rel="stylesheet" href="/_tema/sarela.css">
+<script src="/_tema/tema.js"></script>
+<style>
+  /* Sarela Coach sobre las clases de siempre del demostrador: las pantallas no cambian de
+     estructura, solo de aspecto. Solo variables del tema; ningún color escrito a mano. */
+
+  .app { display: grid; grid-template-columns: calc(240 * var(--u)) minmax(0, 1fr); min-height: calc(100vh - max(calc(72 * var(--u)), 56px)); }
+  .lateral { padding: calc(8 * var(--u)) calc(16 * var(--u)); }
+  .lateral nav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 12px; }
+  .lateral a {
+    display: flex; align-items: center; gap: calc(12 * var(--u));
+    height: var(--ctl-sm); padding: 0 calc(12 * var(--u)); border-radius: var(--radius-8);
+    color: var(--nav-ink); font-weight: 500; text-decoration: none !important; position: relative;
+  }
+  .lateral a:hover { background: var(--hover); }
+  .lateral a[aria-current="page"] { background: var(--sel); color: var(--sel-ink); font-weight: 600; }
+  .lateral a[aria-current="page"]::before {
+    content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: var(--accent);
+  }
+  .lateral svg { width: 20px; height: 20px; flex: none; }
+  .lateral .grupo { color: var(--label-ink); font-size: var(--fs-small); font-weight: 600; padding: calc(16 * var(--u)) calc(12 * var(--u)) 6px; }
+  .s-principal { margin-left: 0; }
+  main { max-width: var(--class-max); margin: 0 auto; padding: calc(32 * var(--u)) calc(32 * var(--u)) calc(60 * var(--u)); }
+  .marca-app { font: 700 15px/1 var(--font-title); color: var(--ink); padding-left: calc(12 * var(--u)); margin-left: calc(4 * var(--u)); box-shadow: -1px 0 0 var(--line); }
+  @media (max-width: 860px) {
+    .app { grid-template-columns: minmax(0, 1fr); }
+    .lateral a[aria-current="page"]::before { display: none; }
+    .lateral nav { flex-direction: row; flex-wrap: wrap; position: static; }
+    .lateral .grupo, .marca-app, .yo { display: none; }
+    .s-principal { margin-left: calc(16 * var(--u)); }
+  }
+
+  /* ---------- Tarjetas ---------- */
+  .tarjeta { background: var(--card); border-radius: var(--radius-12); box-shadow: 0 0 0 1px var(--line), var(--shadow-card); margin-bottom: calc(16 * var(--u)); }
+  .tarjeta > h2 { font-size: var(--fs-section); font-weight: 600; line-height: 1.3; margin: 0; padding: calc(14 * var(--u)) calc(16 * var(--u)); box-shadow: 0 1px 0 var(--line); }
+  .tarjeta > .cuerpo { padding: calc(16 * var(--u)); }
+
+  /* ---------- Tablas ---------- */
+  table { width: 100%; border-collapse: collapse; }
+  thead th { color: var(--muted); font-size: var(--fs-small); font-weight: 600; text-align: left;
+             padding: calc(10 * var(--u)) calc(16 * var(--u)); box-shadow: inset 0 -1px 0 var(--line); }
+  tbody td { padding: calc(12 * var(--u)) calc(16 * var(--u)); box-shadow: inset 0 -1px 0 var(--line); vertical-align: top; }
+  tbody tr:last-child td { box-shadow: none; }
+  tbody tr:hover { background: var(--hover); }
+  td, .cifra { font-variant-numeric: tabular-nums; }
+
+  .mono { font-family: Consolas, "Cascadia Code", monospace; font-size: 12px; color: var(--ink); }
+  .apagado { color: var(--muted); font-size: var(--fs-small); }
+
+  /* ---------- Estados: con palabras; el color solo refuerza ---------- */
+  .etiqueta { display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: var(--radius-pill);
+              font-size: var(--fs-small); font-weight: 600; line-height: 16px; white-space: nowrap; }
+  .e-listo, .e-revisado { background: var(--ok-tint); color: var(--ok); }
+  .e-pendiente { background: var(--warn-tint); color: var(--warn); }
+  .e-procesando { background: var(--sel); color: var(--sel-ink); }
+  .e-error { background: var(--section); color: var(--danger); }
+  .e-encolado { background: var(--tint); color: var(--muted); }
+
+  /* ---------- Formularios ---------- */
+  label { display: block; font-size: var(--fs-small); font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  input[type=text], input[type=search], input[type=password], select, textarea {
+    width: 100%; min-height: var(--ctl); padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--radius-6);
+    background: var(--input); color: var(--ink); font: var(--fs-body) var(--font-ui); }
+  input[type=file] { width: 100%; color: var(--muted); font: var(--fs-body) var(--font-ui); }
+  input[type=file]::file-selector-button { height: var(--ctl-sm); margin-right: 12px; padding: 0 calc(12 * var(--u)); border: 0; border-radius: var(--radius-9);
+    background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-2); font: 600 var(--fs-body) var(--font-ui); cursor: pointer; }
+  textarea { padding: 10px 12px; resize: vertical; min-height: 90px; line-height: 1.5; }
+  select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; }
+
+  /* ---------- Botones ---------- */
+  button, .boton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: var(--ctl); padding: 0 calc(16 * var(--u));
+    border: 0; border-radius: var(--radius-9); background: var(--brand); color: var(--on-brand); font: 600 var(--fs-body)/1 var(--font-ui);
+    cursor: pointer; text-decoration: none !important; white-space: nowrap; transition: background-color 120ms, box-shadow 120ms; }
+  button:hover, .boton:hover { box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.08); }
+  .boton.claro, button.claro { background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-2); }
+  /* Un enlace con aspecto de botón: el color de enlace general no debe ganarle. */
+  .s a.boton { color: var(--on-brand); text-decoration: none; }
+  .s a.boton.claro { color: var(--ink); }
+  .boton.claro:hover, button.claro:hover { background: var(--hover); }
+  button.peligro, .boton.peligro { background: var(--card); color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
+  button.mini, .boton.mini { height: var(--ctl-sm); padding: 0 calc(12 * var(--u)); }
+  button.enlace { height: auto; padding: 0; background: none; color: var(--link); font-weight: 400; }
+  button.enlace:hover { box-shadow: none; text-decoration: underline; }
+  .s-segmentado button { background: transparent; color: var(--muted); }
+  .s-segmentado button[aria-pressed="true"] { background: var(--brand); color: var(--on-brand); }
+
+  /* ---------- Rejillas y cifras ---------- */
+  .rejilla { display: grid; gap: calc(16 * var(--u)); }
+  .r3 { grid-template-columns: repeat(3, 1fr); }
+  .r2 { grid-template-columns: 1fr 1fr; }
+  .r4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 860px) { .r3, .r2, .r4 { grid-template-columns: 1fr; } }
+  .cifra { font-size: 20px; font-weight: 600; line-height: 1.2; color: var(--ink); }
+  .cifra-pie { font-size: var(--fs-small); color: var(--muted); margin-top: 4px; }
+
+  /* ---------- Avisos (sin bordes de color a la izquierda) ---------- */
+  .aviso { padding: calc(12 * var(--u)) calc(16 * var(--u)); border-radius: var(--radius-12); background: var(--section); color: var(--danger); margin-bottom: calc(16 * var(--u)); }
+  .aviso.ok { background: var(--ok-tint); color: var(--ok); }
+  .aviso.atencion { background: var(--warn-tint); color: var(--warn); }
+  .nota { background: var(--section); border-radius: var(--radius-12); padding: calc(14 * var(--u)) calc(16 * var(--u)); color: var(--ink); }
+  .error-texto { color: var(--danger); }
+  .linea { padding: 6px 0; box-shadow: inset 0 -1px 0 var(--line); }
+  .barra { height: 6px; border-radius: var(--radius-pill); background: var(--tint); margin-top: 10px; overflow: hidden; }
+  .barra > div { height: 100%; background: var(--accent); border-radius: var(--radius-pill); }
+  .bloque { border-radius: var(--radius-12); box-shadow: 0 0 0 1px var(--line); margin-bottom: calc(14 * var(--u)); overflow: hidden; background: var(--card); }
+  .bloque > .bloque-cab { background: var(--section); padding: 10px 16px; box-shadow: inset 0 -1px 0 var(--line); }
+  .caja-texto { padding: 9px 11px; background: var(--section); border-radius: var(--radius-6); }
+  .nowrap { white-space: nowrap; }
+  [role="tabpanel"][hidden] { display: none; }
+  .pestanas { margin: calc(8 * var(--u)) 0 calc(14 * var(--u)); }
+  .pestanas button { height: 34px; font-size: var(--fs-body, 14px); }
+  .pestanas button[aria-selected="true"] { background: var(--brand); color: var(--on-brand); }
+  .etiqueta svg { margin-right: 4px; }
+  .otra-propuesta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: -4px 0 14px; }
+  .otra-propuesta input { flex: 1; min-width: 220px; min-height: var(--ctl-sm); }
+  .otra-propuesta .estado { flex-basis: 100%; }
+  .otra-propuesta .estado:empty { display: none; }
+  .buscador { box-shadow: inset 0 -1px 0 var(--line); }
+  .buscador .filtros { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .buscador .filtros .ancho { grid-column: span 2; }
+  .buscador .recuento { margin: 8px 0 0; }
+  .buscador .recuento:empty { display: none; }
+  tbody tr[hidden] { display: none; }
+  fieldset.solo-lectura { border: 0; padding: 0; margin: 0; min-width: 0; }
+  fieldset.solo-lectura:disabled { opacity: .6; }
+</style>
+</head>
+<body class="s">
+{% set yo = request.state.usuario %}
+{% set ruta = request.url.path %}
+<header class="s-topbar">
+  {% if url_portal %}<a class="s-topbar__marca" href="{{ url_portal }}" title="Volver a las aplicaciones">{% else %}<span class="s-topbar__marca">{% endif %}
+    <img class="s-topbar__logo s-logo--claro" src="/_tema/logos/sarela-smart-ink.svg" alt="{{ 'Volver a las aplicaciones' if url_portal else 'Sarela' }}">
+    <img class="s-topbar__logo s-logo--oscuro" src="/_tema/logos/sarela-smart-white.svg" alt="{{ 'Volver a las aplicaciones' if url_portal else 'Sarela' }}">
+  {% if url_portal %}</a>{% else %}</span>{% endif %}
+  <span class="marca-app">Adaptación de contenidos</span>
+  <div class="s-topbar__fin">
+    <div data-selector-tema></div>
+    {% if yo and not yo.local %}
+    <span class="yo s-muted">{{ yo.nombre or yo.usuario }}</span>
+    <form method="post" action="/auth/salir"><button class="claro mini" type="submit">Cerrar sesión</button></form>
+    {% endif %}
+  </div>
+</header>
+<div class="app">
+  <aside class="lateral">
+    <nav aria-label="Secciones">
+      <a href="/" {% if ruta == '/' or ruta.startswith('/trabajo') %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/></svg>
+        Unidades y trabajos</a>
+      <a href="/learningcloud" {% if ruta.startswith('/learningcloud') %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v13"/><path d="m3 13 4 4 4-4"/><path d="M17 20V7"/><path d="m13 11 4-4 4 4"/></svg>
+        learningCloud</a>
+      <a href="/memoria" {% if ruta.startswith('/memoria') %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20"/></svg>
+        Memoria</a>
+      <a href="/comentarios" {% if ruta.startswith('/comentarios') %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>
+        Comentarios</a>
+      <a href="/curriculos" {% if ruta.startswith('/curriculos') %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h7"/><path d="M9 17h5"/></svg>
+        Currículos</a>
+      <a href="/ajustes" {% if ruta.startswith('/ajustes') %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10"/><path d="M18 6h2"/><circle cx="16" cy="6" r="2"/><path d="M4 12h4"/><path d="M12 12h8"/><circle cx="10" cy="12" r="2"/><path d="M4 18h10"/><path d="M18 18h2"/><circle cx="16" cy="18" r="2"/></svg>
+        Ajustes</a>
+      {% if rol_admin(request) %}
+      <a href="/auditoria" {% if ruta.startswith('/auditoria') %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+        Auditoría</a>
+      {% endif %}
+      <span class="grupo">Para integraciones</span>
+      <a href="/api/docs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/></svg>
+        API</a>
+    </nav>
+  </aside>
+  <div class="s-principal">
+    <main>
+{% block contenido %}{% endblock %}
+    </main>
+  </div>
+</div>
+</body>
+</html>

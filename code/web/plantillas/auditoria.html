@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block titulo %}Auditoría{% endblock %}
+{% block contenido %}
+<h1 class="s-titulo">Auditoría</h1>
+<p class="s-subtitulo">Quién ha entrado y qué ha hecho, por la pantalla, la API o el MCP.</p>
+
+<div class="tarjeta">
+  <h2>Filtrar</h2>
+  <div class="cuerpo">
+    <form method="get" action="/auditoria" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div><label for="usuario">Usuario</label>
+        <select id="usuario" name="usuario">
+          <option value="">Todos</option>
+          {% for u in opciones.usuarios %}<option value="{{ u }}" {% if filtros.usuario == u %}selected{% endif %}>{{ u }}</option>{% endfor %}
+        </select></div>
+      <div><label for="accion">Acción</label>
+        <select id="accion" name="accion">
+          <option value="">Todas</option>
+          {% for a in opciones.acciones %}<option value="{{ a }}" {% if filtros.accion == a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+        </select></div>
+      <div><label for="trabajo">Trabajo</label>
+        <input type="text" id="trabajo" name="trabajo" value="{{ filtros.trabajo }}" inputmode="numeric" style="width:90px"></div>
+      <div><label for="desde">Desde</label>
+        <input type="date" id="desde" name="desde" value="{{ filtros.desde }}"></div>
+      <div><label for="hasta">Hasta</label>
+        <input type="date" id="hasta" name="hasta" value="{{ filtros.hasta }}"></div>
+      <div><label style="display:flex;gap:6px;align-items:center;margin-bottom:9px">
+        <input type="checkbox" name="denegados" value="1" {% if filtros.denegados %}checked{% endif %}> Solo intentos bloqueados</label></div>
+      <div><button type="submit">Filtrar</button></div>
+      <div><a class="boton claro" href="/auditoria?{{ query }}{{ '&' if query else '' }}formato=csv">Descargar CSV</a></div>
+    </form>
+  </div>
+</div>
+
+<div class="tarjeta">
+  <h2>Registro{% if filas|length >= 500 %} (los 500 más recientes){% endif %}</h2>
+  {% if filas %}
+  <table>
+    <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Canal</th><th>Acción</th><th>Trabajo</th><th>Detalle</th><th>IP</th></tr></thead>
+    <tbody>
+    {% for f in filas %}
+      <tr>
+        <td class="nowrap mono">{{ f.fecha | fecha_hora }}</td>
+        <td>{{ f.nombre or f.usuario or '—' }}{% if f.usuario and f.nombre and f.usuario != f.nombre %}<br><span class="apagado">{{ f.usuario }}</span>{% endif %}</td>
+        <td class="apagado">{{ f.canal or '—' }}</td>
+        <td class="nowrap">{% if f.resultado != 'ok' %}<span class="etiqueta e-error">{{ f.resultado }}</span> {% endif %}{{ f.accion }}</td>
+        <td>{% if f.trabajo_id %}<a href="/trabajo/{{ f.trabajo_id }}">{{ f.trabajo_id }}</a>{% elif f.paquete_id %}<span class="apagado">paquete {{ f.paquete_id }}</span>{% else %}—{% endif %}</td>
+        <td>{{ f.detalle or '' }}</td>
+        <td class="apagado mono">{{ f.ip or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="cuerpo"><p class="apagado">No hay nada registrado con estos filtros.</p></div>{% endif %}
+  <div class="cuerpo">
+    <p class="apagado" style="margin:0">
+      Se registran las entradas en la aplicación y todo lo que cambia algo; las consultas no.
+      Los intentos fallidos de inicio de sesión no llegan a la aplicación: los guarda Keycloak
+      (realm <span class="mono">demos</span>, apartado Events). Contiene datos personales y se
+      conserva {{ conservacion }} días.
+    </p>
+  </div>
+</div>
+{% endblock %}

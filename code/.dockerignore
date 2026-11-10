@@ -1,0 +1,22 @@
+# Nunca en la imagen.
+# api/smarted-api.json lleva 129 veces un JWT de servicio con rol ADMINISTRATOR.
+api/
+.env
+.env.*
+!.env.ejemplo
+
+# Datos: viven en un volumen del servidor, no en la imagen.
+.demostrador/
+.trabajo/
+courses/
+fuente/
+entregables/
+docs/
+adaptacion/
+
+# Ruido.
+**/__pycache__/
+**/*.pyc
+.git/
+.vscode/
+.idea/

@@ -1,0 +1,15 @@
+name: CI
+
+on:
+    release:
+      types: [prereleased, released]
+
+env:
+  DELIVERY_FILE: true
+
+jobs:
+    ci:
+      name: ci
+      uses: netexknowledge/.github/.github/workflows/ci-reusable.yml@ci-reusable#v1
+      permissions: write-all
+      secrets: inherit

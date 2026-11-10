@@ -1,0 +1,606 @@
+{% extends "base.html" %}
+{% block titulo %}Trabajo {{ t.id }} · {{ t.destino }}{% endblock %}
+{% block contenido %}
+
+{# Solo quien lo tiene escribe. Quien no, consulta: un administrador lo ve entero, sin
+   poder cambiar nada hasta que lo tome; un editor ve el resumen, el informe y el contenido. #}
+{% set ro = not puede_escribir %}
+{% set consulta = ro and not rol_admin(request) %}
+
+{% if t.estado in ('encolado', 'procesando') %}
+{# `auto`: la recarga no cuenta como actividad de nadie. #}
+<meta http-equiv="refresh" content="4;url=/trabajo/{{ t.id }}?auto=1">
+{% elif ia.estado == 'en_curso' %}
+<script>
+// Con el asistente trabajando, la página no se recarga a ciegas: se puede seguir
+// decidiendo términos. Pregunta cada 5 s y se recarga al cambiar de operación o de cola,
+// salvo que haya algo escrito sin guardar.
+(function () {
+  var sucio = false;
+  document.addEventListener('input', function () { sucio = true; });
+  function huella(e) {
+    return [e.estado, e.operacion, e.cola.pendientes.length, (e.cola.actual || {}).operacion].join('|');
+  }
+  var antes = huella({estado: {{ ia.estado|tojson }}, operacion: {{ ia.operacion|tojson }}, cola: {{ ia.cola|tojson }}});
+  function mirar() {
+    fetch('/trabajo/{{ t.id }}/asistente/estado', {credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (e) {
+        var m = document.querySelector('.mensaje-ia-vivo');
+        if (m) m.textContent = e.mensaje || '';
+        var a = document.querySelector('.avance-ia-vivo');
+        if (a && e.total) a.textContent = e.hechas + ' de ' + e.total + ' (' + Math.round(e.hechas / e.total * 100) + ' %).';
+        if (huella(e) !== antes) {
+          if (!sucio) { location.replace('/trabajo/{{ t.id }}?auto=1#asistente'); return; }
+          var aviso = document.getElementById('aviso-recarga');
+          if (aviso) aviso.hidden = false;
+        }
+        setTimeout(mirar, 5000);
+      })
+      .catch(function () { setTimeout(mirar, 15000); });
+  }
+  setTimeout(mirar, 5000);
+})();
+</script>
+{% endif %}
+
+<p style="margin-bottom:16px"><a href="/">← Paquetes y trabajos</a></p>
+
+<div class="tarjeta">
+  <h2>Trabajo {{ t.id }} · {{ 'Traducción' if t.tipo == 'traduccion' else 'Adaptación curricular' }}
+      → {{ t.destino }}</h2>
+  <div class="cuerpo">
+    {% if ia.disponible and not ia.clave.ok and not consulta %}
+      <div class="aviso" role="alert"><b>El asistente no está disponible:</b> la API rechaza la clave del servidor. No se puede traducir, revisar, analizar ni proponer hasta que el administrador ponga una nueva. <a href="#asistente">Más detalle</a>.</div>
+    {% endif %}
+    <p class="apagado" style="margin:0 0 14px">Encargado {% if t.creado_por %}por {{ t.creado_por }} {% endif %}el {{ t.creado_en | fecha_hora }}.</p>
+
+    {% if t.en_uso and t.en_uso.mio %}
+      <div class="nota" style="margin-bottom:18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <span style="flex:1;min-width:240px"><b>Estás trabajando en él</b> desde las {{ t.en_uso.desde | hora }}.
+          Nadie más puede cambiarlo mientras sigas activo; tras {{ minutos_bloqueo }} minutos sin actividad queda libre.</span>
+        <form method="post" action="/trabajo/{{ t.id }}/dejar"><button type="submit" class="boton claro mini">Dejar el trabajo</button></form>
+      </div>
+    {% elif t.en_uso %}
+      <div class="aviso atencion" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <span style="flex:1;min-width:240px"><b>Lo está trabajando {{ t.en_uso.nombre }}</b> desde las {{ t.en_uso.desde | hora }}
+          (última actividad a las {{ t.en_uso.ultima_actividad | hora }}).
+          {% if rol_admin(request) %}Puedes consultarlo todo, pero no cambiar nada sin tomarlo antes: perdería lo que esté haciendo.
+          {% else %}Puedes consultar el informe y el contenido generado. Quedará libre cuando lo deje o tras {{ minutos_bloqueo }} minutos sin actividad.{% endif %}</span>
+        {% if rol_admin(request) %}
+        <form method="post" action="/trabajo/{{ t.id }}/tomar"
+              onsubmit="return confirm('{{ t.en_uso.nombre }} dejará de poder cambiar este trabajo. ¿Tomarlo?')">
+          <button type="submit" class="mini">Tomar el trabajo</button></form>
+        <form method="post" action="/trabajo/{{ t.id }}/dejar"
+              onsubmit="return confirm('¿Dejar el trabajo libre? {{ t.en_uso.nombre }} perderá el bloqueo.')">
+          <button type="submit" class="boton claro mini">Liberar</button></form>
+        {% endif %}
+      </div>
+    {% elif rol_admin(request) %}
+      <div class="nota" style="margin-bottom:18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <span style="flex:1;min-width:240px">Nadie está trabajando en él{% if t.ultima_actividad %} (último uso: {{ t.ultima_actividad | hora }}){% endif %}.
+          Si cambias algo, pasarás a tenerlo tú.</span>
+        <form method="post" action="/trabajo/{{ t.id }}/tomar"><button type="submit" class="boton claro mini">Trabajar en él</button></form>
+      </div>
+    {% endif %}
+    {% if request.query_params.get('ocupado') and t.en_uso and not t.en_uso.mio %}
+      <div class="aviso">No se ha guardado: mientras tanto, el trabajo ha pasado a {{ t.en_uso.nombre }}.</div>
+    {% endif %}
+
+    {% if t.estado == 'error' %}
+      <div class="aviso"><b>Ha fallado:</b> {{ t.mensaje }}</div>
+    {% elif t.estado in ('encolado', 'procesando') %}
+      <div class="nota">Procesando la unidad. Esta página se actualiza sola.</div>
+    {% else %}
+
+      {% set cobertura = (t.elementos_adaptados / t.elementos_totales * 100)
+                          if t.elementos_totales else 0 %}
+      {% set mismo_idioma = t.idioma_origen and t.idioma_origen == (t.idioma_destino or t.idioma_origen) %}
+      {% if t.tipo == 'adaptacion' and mismo_idioma and cobertura < 95 %}
+        <div class="nota" style="margin-bottom:20px">
+          La unidad ya está en el idioma de destino: no hay nada que traducir, y lo que se
+          cambia son solo los {{ t.terminos|length }} puntos que dependen del territorio. Por eso la
+          cifra de elementos adaptados es baja, y es lo normal. En materias como Matemáticas puede
+          no haber casi nada que adaptar.
+          {% if ia.disponible %}Para que el asistente lea la unidad entera buscando lo que dependa
+          del territorio, usa «Revisar la unidad entera», más abajo.{% endif %}
+        </div>
+      {% elif t.elementos_adaptados == 0 %}
+        <div class="aviso" style="margin-bottom:20px">
+          <b>Esta unidad no está en la memoria del sistema.</b>
+          Se han detectado {{ t.terminos|length }} puntos que requieren decisión editorial,
+          pero <b>no se ha traducido ni adaptado ningún texto</b>: el procesador aplica
+          decisiones ya tomadas sobre unidades conocidas.
+          {% if ia.disponible %}Usa el asistente, más abajo, para traducir el resto.
+          {% else %}El asistente no está configurado en este servidor.{% endif %}
+        </div>
+      {% elif cobertura < 95 %}
+        <div class="aviso atencion" style="margin-bottom:20px">
+          <b>Cobertura parcial: {{ '%.0f'|format(cobertura) }} %.</b>
+          {{ t.elementos_totales - t.elementos_adaptados }} de {{ t.elementos_totales }}
+          elementos con texto siguen como estaban, porque el sistema no tenía decisión
+          guardada para ellos. Revisa el informe antes de dar la unidad por buena.
+        </div>
+      {% endif %}
+
+      <div class="rejilla r4" style="margin-bottom:22px">
+        <div><div class="cifra">{{ t.elementos_adaptados }}</div>
+             <div class="cifra-pie">elementos adaptados</div></div>
+        <div><div class="cifra">{{ t.elementos_totales }}</div>
+             <div class="cifra-pie">elementos con texto</div></div>
+        <div><div class="cifra">{{ t.terminos_pendientes }}</div>
+             <div class="cifra-pie">términos sin revisar</div></div>
+        <div><div class="cifra">{{ t.avisos_validacion }}</div>
+             <div class="cifra-pie">avisos de validación</div></div>
+      </div>
+
+      {% set img = t.imagenes or {} %}
+      {% if img.diseno %}
+        <div class="aviso atencion" style="margin-bottom:18px">
+          <b>{{ img.diseno|length }} {{ 'imagen con texto va' if img.diseno|length == 1 else 'imágenes con texto van' }} a diseño</b>
+          y {{ 'sigue' if img.diseno|length == 1 else 'siguen' }} como en el original: Sarela no
+          {{ 'la' if img.diseno|length == 1 else 'las' }} ha podido rehacer sin riesgo (rótulos sobre
+          un dibujo o girados, o contenido del territorio de origen). La ficha de cada una, con la
+          traducción propuesta de sus rótulos, está en el
+          <a href="{{ t.url_informe }}#imagenes" target="_blank">informe</a>{% if not consulta %};
+          en <a href="/trabajo/{{ t.id }}/imagenes">Imágenes de la unidad</a> puedes pedir al asistente que
+          las rehaga o que busque fotos, o sustituirlas tú{% endif %}.
+          <details style="margin-top:8px"><summary>Ver cuáles</summary>
+            <ul style="margin:8px 0 0 18px">
+            {% for i in img.diseno %}
+              <li><span class="mono">{{ i.fichero.split('/')[-1] }}</span>{% if i.territorial %} · territorial{% endif %} — {{ i.detalle }}</li>
+            {% endfor %}
+            </ul>
+          </details>
+        </div>
+      {% endif %}
+      {% if img.rehechas %}
+        <p class="apagado" style="margin:0 0 18px">
+          {{ img.rehechas }} {{ 'imagen rehecha' if img.rehechas == 1 else 'imágenes rehechas' }} automáticamente con sus rótulos traducidos{% if img.por_mirar %}, {{ img.por_mirar }} por mirar{% endif %}:
+          compara el antes y el después en el <a href="{{ t.url_informe }}#imagenes" target="_blank">informe</a>.</p>
+      {% endif %}
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        {% if t.url_contenido %}
+        <a class="boton" href="{{ t.url_contenido }}" target="_blank">Ver contenido generado</a>
+        <a class="boton claro" href="{{ t.url_contenido }}?docente=1" target="_blank"
+           title="El contenido para el profesorado, que el reproductor solo enseña dentro de smartED">Ver como docente</a>
+        <a class="boton claro" href="/original/{{ t.paquete_id }}/index.html" target="_blank">
+          Ver original</a>
+        {% endif %}
+        <a class="boton claro" href="{{ t.url_informe }}" target="_blank">Informe de cambios</a>
+        {% if not consulta %}
+        <a class="boton claro" href="/trabajo/{{ t.id }}/imagenes">Imágenes de la unidad</a>
+        <a class="boton claro" href="{{ t.url_descarga }}">{% if t.formato == 'author' %}Descargar fuente de Author{% else %}Descargar paquete{% endif %}</a>
+        {% endif %}
+        {% if t.formato == 'author' and t.tipo == 'adaptacion' and not consulta %}
+        <a class="boton claro" href="/learningcloud">Enviar a learningCloud</a>
+        {% endif %}
+      </div>
+
+      {% if t.envio %}
+        <p style="margin:16px 0 0">
+          <span class="etiqueta e-{{ {'enviado': 'listo', 'conflicto': 'pendiente'}.get(t.envio.estado, 'error') }}">{{ t.envio.estado }}</span>
+          en learningCloud{% if t.envio.proyecto %}: {{ t.envio.proyecto.nombre or t.envio.proyecto.id }}{% if t.envio.ruta %} / {{ t.envio.ruta | join(' / ') }}{% endif %}{% endif %}
+          {% if t.envio.url %} · <a href="{{ t.envio.url }}" target="_blank" rel="noopener">abrir la carpeta</a>{% endif %}
+          <br><span class="apagado">{{ t.envio.mensaje }} {{ t.envio.usuario or '' }}, {{ t.envio.fecha | replace('T', ' ') }}.</span>
+        </p>
+      {% endif %}
+
+      {% if not consulta %}
+      <details style="margin-top:16px">
+        <summary>Configuración del trabajo</summary>
+        <form method="post" action="/trabajo/{{ t.id }}/configuracion" style="margin-top:10px">
+          <fieldset class="solo-lectura" {% if ro %}disabled{% endif %}>
+          <label style="display:flex;gap:8px;align-items:center;font-weight:400">
+            <input type="checkbox" name="regenerar_imagenes" value="1" {% if t.regenerar_imagenes %}checked{% endif %}>
+            Regenerar las imágenes con texto al procesar (rótulos traducidos; tarda más)</label>
+          <div class="rejilla r4" style="margin-top:12px;gap:10px">
+            <div><label for="cfg-etapa">Etapa</label>
+              <select id="cfg-etapa" name="etapa">
+                <option value="" {% if not t.etapa %}selected{% endif %}>—</option>
+                {% for e in ('ESO', 'Primaria') %}<option value="{{ e }}" {% if t.etapa == e %}selected{% endif %}>{{ e }}</option>{% endfor %}
+              </select></div>
+            <div><label for="cfg-curso">Curso</label>
+              <select id="cfg-curso" name="curso">
+                <option value="">—</option>
+                {% for n in range(1, 7) %}<option value="{{ n }}" {% if t.curso == n %}selected{% endif %}>{{ n }}.º</option>{% endfor %}
+              </select></div>
+            <div style="grid-column:span 2"><label for="cfg-materia">Materia</label>
+              <select id="cfg-materia" name="materia">
+                <option value="" {% if not t.materia %}selected{% endif %}>—</option>
+                {% for ident, nombre in materias.items() %}<option value="{{ ident }}" {% if t.materia == ident %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+              </select></div>
+          </div>
+          <p class="apagado" style="margin:6px 0 0">Etapa, curso y materia se leen de la portada de la unidad y deciden qué parte del currículo de la comunidad recibe el asistente.</p>
+          <p style="margin:10px 0 0;display:flex;gap:10px;flex-wrap:wrap">
+            <button type="submit" name="reprocesar" value="1" class="mini">Guardar y reprocesar</button>
+            <button type="submit" class="boton claro mini">Solo guardar</button></p>
+          </fieldset>
+        </form>
+        {% if puede_borrar %}
+        <form method="post" action="/trabajo/{{ t.id }}/borrar" style="margin-top:18px;padding-top:14px;box-shadow:0 -1px 0 var(--line)"
+              onsubmit="return confirm('¿Borrar el trabajo {{ t.id }}? Se pierden sus decisiones, el informe y el contenido generado. Queda una copia en el servidor, pero desde la aplicación no se puede recuperar.')">
+          <fieldset class="solo-lectura" {% if ro or ia.estado == 'en_curso' %}disabled{% endif %}>
+          <p class="apagado" style="margin:0 0 8px">Si el trabajo ya no sirve —una prueba, un duplicado—, bórralo. La unidad subida y la memoria no se tocan.</p>
+          <button type="submit" class="boton peligro mini">Borrar el trabajo</button>
+          </fieldset>
+        </form>
+        {% endif %}
+      </details>
+      {% endif %}
+      {% if request.query_params.get('error_borrar') %}
+        <div class="aviso" style="margin-top:14px">No se ha borrado: {{ request.query_params.get('error_borrar') }}</div>
+      {% endif %}
+
+      {% if request.query_params.get('guardado') %}
+        <div class="aviso ok" style="margin-top:18px">
+          Decisiones aplicadas y paquete regenerado.</div>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% if t.estado == 'listo' and not consulta and t.tipo == 'adaptacion' %}
+<fieldset class="solo-lectura" {% if ro %}disabled{% endif %}>
+<div class="tarjeta" id="plan">
+  <h2>Currículo y plan de adaptación</h2>
+  <div class="cuerpo">
+    {% if t.curriculo %}
+      <p style="margin:0 0 12px">Currículo de destino: <b>{{ t.curriculo.materia }}</b>, cursos {{ t.curriculo.cursos }} de {{ t.curriculo.etapa }} —
+        <a href="{{ t.curriculo.url }}" target="_blank" rel="noopener">{{ t.curriculo.norma }}</a>, {{ t.curriculo.boletin }}.
+        <a href="/curriculos?comunidad={{ t.comunidad|urlencode }}&etapa={{ t.etapa }}&materia={{ t.materia }}&curso={{ t.curso }}#extracto">Ver lo que recibe el asistente</a>.</p>
+      {% if not t.curriculo.exacto %}<div class="aviso atencion">En {{ t.comunidad }} esta materia no tiene currículo para {{ t.curso }}.º: se usa el de los cursos {{ t.curriculo.cursos }}.</div>{% endif %}
+      <p class="apagado" style="margin:0 0 12px">El asistente lo usa al revisar la unidad y al proponer adaptaciones. «Analizar con el currículo» compara la unidad con los saberes y criterios de {{ t.comunidad }} y deja un plan: qué cubre, qué hay que sustituir y qué falta. Las propuestas siguientes siguen ese plan.</p>
+      {% if ia.disponible and ia.clave.ok and ia.estado != 'en_curso' %}
+      <form method="post" action="/trabajo/{{ t.id }}/asistente/analizar">
+        <button type="submit" {% if t.plan %}class="boton claro"{% endif %}>{{ 'Volver a analizar' if t.plan else 'Analizar con el currículo' }}</button></form>
+      {% endif %}
+    {% elif t.curriculo_disponible %}
+      <div class="aviso atencion">No se sabe a qué materia o curso corresponde la unidad. Indícalos en la configuración del trabajo para que el asistente use el currículo de {{ t.comunidad }}.</div>
+    {% else %}
+      <p class="apagado" style="margin:0">Todavía no hay currículo de {{ t.comunidad }} en Sarela: el asistente adapta sin él.</p>
+    {% endif %}
+
+    {% if t.plan %}
+      {% set p = t.plan %}
+      <div class="nota" style="margin-top:16px"><b>Plan de adaptación</b> <span class="apagado">({{ p.fecha | hora }})</span><br>{{ p.resumen }}</div>
+      {% if p.sustituir %}
+      <h3 style="margin:18px 0 8px;font-size:15px">Qué sustituir ({{ p.sustituir|length }})</h3>
+      <table><thead><tr><th style="width:18%">Lección</th><th style="width:26%">Qué</th><th>Por qué</th><th style="width:30%">Propuesta</th></tr></thead><tbody>
+      {% for x in p.sustituir %}<tr><td class="apagado">{{ x.leccion }}</td><td>{{ x.que }}</td><td>{{ x.por_que }}</td><td>{{ x.propuesta }}</td></tr>{% endfor %}
+      </tbody></table>
+      {% endif %}
+      {% if p.falta %}
+      <h3 style="margin:18px 0 8px;font-size:15px">Qué falta del currículo ({{ p.falta|length }})</h3>
+      <ul style="margin:0 0 0 18px">{% for x in p.falta %}<li><b>{{ x.saber }}</b> — {{ x.sugerencia }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if p.cubre %}
+      <details style="margin-top:14px"><summary>Qué cubre ya ({{ p.cubre|length }})</summary>
+        <ul style="margin:8px 0 0 18px">{% for x in p.cubre %}<li>{{ x.saber }} <span class="apagado">— {{ x.donde }}</span></li>{% endfor %}</ul>
+      </details>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+</fieldset>
+{% endif %}
+
+{% if t.estado == 'listo' and not consulta and t.tipo == 'adaptacion' %}
+<fieldset class="solo-lectura" {% if ro %}disabled{% endif %}>
+<div class="tarjeta" id="documentacion">
+  <h2>Documentación del experto ({{ documentos|length }})</h2>
+  <div class="cuerpo">
+    <p style="margin:0 0 12px">Lo que aporte el experto —datos de {{ t.comunidad }}, ejemplos, enlaces, imágenes,
+      actividades— es la fuente prioritaria del asistente al revisar, analizar y proponer. Puede
+      <b>descargar la ficha</b> del trabajo, rellenar en ella su propuesta para cada punto y subirla: las
+      propuestas pasan a los términos, pendientes de que las confirmes.</p>
+    {% set q = request.query_params %}
+    {% if q.get('error_doc') %}<div class="aviso">{{ q.get('error_doc') }}</div>{% endif %}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px">
+      <a class="boton claro" href="/trabajo/{{ t.id }}/ficha-experto.docx">Descargar la ficha para el experto</a>
+      <form method="post" action="/trabajo/{{ t.id }}/documentos" enctype="multipart/form-data"
+            style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="file" name="fichero" accept=".docx,.pdf,.txt,.md" required aria-label="Documento del experto">
+        <button type="submit">Subir documento</button>
+      </form>
+    </div>
+    <details {% if not documentos %}open{% endif %}>
+      <summary>O pegar el contenido aquí</summary>
+      <form method="post" action="/trabajo/{{ t.id }}/documentos/texto" style="margin-top:10px">
+        <label for="doc-titulo">Título</label>
+        <input type="text" id="doc-titulo" name="titulo" placeholder="Por ejemplo: Rocas y minerales de {{ t.comunidad }}">
+        <label for="doc-texto" style="margin-top:8px">Contenido</label>
+        <textarea id="doc-texto" name="texto" rows="6" required
+                  placeholder="Datos, ejemplos, enlaces y actividades para la adaptación, con su fuente."></textarea>
+        <p style="margin-top:10px"><button type="submit">Guardar</button></p>
+      </form>
+    </details>
+    {% if documentos %}
+    <table style="margin-top:16px">
+      <thead><tr><th>Documento</th><th>Quién</th><th>Contenido</th><th></th></tr></thead>
+      <tbody>
+      {% for d in documentos %}
+        <tr id="d{{ d.id }}" {% if q.get('documento') == d.id|string %}style="background:var(--ok-tint)"{% endif %}>
+          <td><b>{{ d.nombre }}</b><br><span class="apagado">{{ d.tipo }} · {{ d.creado_en | hora }}</span>
+            <details style="margin-top:4px"><summary class="apagado" style="font-size:12.5px">Ver el principio</summary>
+              <p style="font-size:12.5px;white-space:pre-line;margin:6px 0 0">{{ d.inicio }}{% if d.caracteres > 400 %}…{% endif %}</p>
+              {% if d.enlaces %}<ul style="margin:6px 0 0 18px;font-size:12.5px">{% for e in d.enlaces[:12] %}<li><a href="{{ e }}" target="_blank" rel="noopener">{{ e }}</a></li>{% endfor %}</ul>{% endif %}
+            </details></td>
+          <td>{{ d.autor or '—' }}<br><span class="etiqueta {{ 'e-listo' if d.rol == 'experto' else '' }}">{{ d.rol }}</span></td>
+          <td class="nowrap">{{ d.caracteres }} caracteres<br>
+            {{ d.imagenes|length }} imágenes · {{ d.enlaces|length }} enlaces
+            {% if d.propuestas %}<br><b>{{ d.propuestas }} propuestas</b> pasadas a los términos{% endif %}
+            {% if d.imagenes %}<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">{% for i in d.imagenes[:6] %}<img src="{{ i.url }}" alt="{{ i.nombre }}" style="width:44px;height:44px;object-fit:cover;border-radius:4px">{% endfor %}</div>{% endif %}</td>
+          <td><form method="post" action="/trabajo/{{ t.id }}/documentos/{{ d.id }}/borrar"
+                    onsubmit="return confirm('¿Borrar «{{ d.nombre }}»? Las propuestas ya pasadas a los términos se quedan.')">
+              <button type="submit" class="boton claro mini">Borrar</button></form></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if documentos|selectattr('imagenes')|list %}<p class="apagado" style="margin:10px 0 0">Sus imágenes se pueden usar en <a href="/trabajo/{{ t.id }}/imagenes">Imágenes de la unidad</a>.</p>{% endif %}
+    {% endif %}
+  </div>
+</div>
+</fieldset>
+{% endif %}
+
+{% if t.estado == 'listo' and not consulta %}
+<fieldset class="solo-lectura" {% if ro %}disabled{% endif %}>
+<div class="tarjeta" id="asistente">
+  <h2>Asistente</h2>
+  <div class="cuerpo">
+    {% if not ia.disponible %}
+      <p class="apagado">No está configurado en este servidor: falta la clave de la API.</p>
+    {% else %}
+      {% if not ia.clave.ok %}
+        <div class="aviso" role="alert"><b>El asistente no está disponible.</b> {{ ia.clave.motivo }}</div>
+      {% endif %}
+      <p class="apagado" style="margin-bottom:14px">
+        Nada de lo que hace el asistente se da por bueno solo. Las traducciones quedan
+        <b>por revisar</b>, las adaptaciones son <b>propuestas</b> en la caja de cada término y
+        los enlaces son <b>candidatos</b> ya comprobados. Modelo: <span class="mono">{{ ia.modelo }}</span>.
+      </p>
+
+      {% if ia.estado == 'en_curso' %}
+        {% set avance = (ia.hechas / ia.total * 100) if ia.total else 0 %}
+        <div class="nota" style="margin-bottom:14px">
+          <b>{{ {'traducir': 'Traduciendo', 'revisar': 'Leyendo la unidad entera',
+                 'proponer': 'Preparando propuestas', 'enlaces': 'Buscando enlaces',
+                 'comprobar': 'Releyendo imágenes', 'analizar': 'Analizando con el currículo',
+                 'rehacer_imagenes': 'Rehaciendo imágenes', 'proponer_imagenes': 'Buscando fotos'}.get(ia.operacion, 'Trabajando') }}…</b>
+          <span class="avance-ia-vivo">{% if ia.total %}{{ ia.hechas }} de {{ ia.total }} ({{ '%.0f'|format(avance) }} %).{% endif %}</span>
+          La página se actualiza sola al terminar.
+          {% if ia.total %}<div class="barra"><div style="width:{{ avance }}%"></div></div>{% endif %}
+          {% if ia.mensaje %}<p class="apagado mensaje-ia-vivo" style="margin-top:8px;white-space:pre-line">{{ ia.mensaje }}</p>{% endif %}
+          {% if ia.cola.pendientes %}
+          <p style="margin-top:8px"><b>En cola:</b>
+            {% for p in ia.cola.pendientes %}{{ {'traducir': 'traducir', 'revisar': 'revisar la unidad', 'proponer': 'proponer adaptaciones', 'enlaces': 'buscar enlaces', 'comprobar': 'releer imágenes', 'analizar': 'analizar con el currículo', 'rehacer_imagenes': 'rehacer imágenes', 'proponer_imagenes': 'buscar fotos'}.get(p.operacion, p.operacion) }}{% if p.huellas %} ({{ p.huellas|length }} {{ 'imagen' if p.huellas|length == 1 else 'imágenes' }}){% endif %}{% if not loop.last %} · {% endif %}{% endfor %}.</p>
+          {% endif %}
+          <p class="apagado" style="margin-top:8px">Lo que pidas ahora se pone a la cola.</p>
+          <p id="aviso-recarga" hidden style="margin-top:8px"><b>El asistente ha terminado un paso.</b> Guarda lo que estés escribiendo y <a href="/trabajo/{{ t.id }}#asistente">recarga la página</a> para ver el resultado.</p>
+        </div>
+      {% endif %}
+        {% if ia.mensaje and ia.estado != 'en_curso' %}
+          <div class="aviso {{ 'ok' if ia.estado == 'listo' else '' }}"
+               style="white-space:pre-line;margin-bottom:14px">{{ ia.mensaje }}</div>
+        {% endif %}
+        <div style="display:flex;gap:10px;flex-wrap:wrap" {% if not ia.clave.ok %}hidden{% endif %}>
+          {% if t.idioma_destino and t.frases_conocidas < t.frases_totales %}
+          <form method="post" action="/trabajo/{{ t.id }}/asistente/traducir">
+            <button type="submit">Traducir lo que falta</button></form>
+          {% endif %}
+          {% if t.idioma_destino %}
+          <form method="post" action="/trabajo/{{ t.id }}/asistente/comprobar"
+                title="El asistente relee las imágenes rehechas y comprueba que dicen lo que deben">
+            <button type="submit" class="boton claro">Comprobar imágenes</button></form>
+          {% endif %}
+          {% if t.tipo == 'adaptacion' %}
+          <form method="post" action="/trabajo/{{ t.id }}/asistente/revisar"
+                title="Busca lo que depende del territorio aunque no nombre ningún lugar conocido">
+            <button type="submit" class="boton claro">Revisar la unidad entera</button></form>
+          <form method="post" action="/trabajo/{{ t.id }}/asistente/proponer">
+            <button type="submit" class="boton claro">Proponer adaptaciones</button></form>
+          <form method="post" action="/trabajo/{{ t.id }}/asistente/enlaces">
+            <button type="submit" class="boton claro">Buscar enlaces</button></form>
+          {% endif %}
+        </div>
+
+      {% if por_revisar %}
+        <p style="margin-top:14px">
+          <a href="/trabajo/{{ t.id }}/traducciones"><b>{{ por_revisar }} traducciones automáticas
+          por revisar</b></a> — se ven ya en el paquete, pero nadie las ha confirmado.</p>
+      {% endif %}
+      {% if ia.coste_usd %}
+        <p class="apagado" style="margin-top:10px">
+          Coste estimado en este trabajo: {{ '%.2f'|format(ia.coste_usd) }} USD en
+          {{ ia.llamadas|length }} operaciones.</p>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="tarjeta">
+  <h2>Términos pendientes de decisión ({{ t.terminos|length }})</h2>
+  <div class="cuerpo">
+    {% if t.terminos %}
+      <p class="apagado" style="margin-bottom:18px">
+        El sistema no decide estos por su cuenta: dependen de criterio editorial, de una
+        fuente que hay que verificar o de una decisión legal. Lo que escribas aquí se
+        guarda y alimenta las próximas ejecuciones.
+      </p>
+
+      {% for x in t.terminos %}
+      <div id="t{{ x.id }}" class="bloque">
+        <div class="bloque-cab" style="display:flex;align-items:center;gap:12px">
+          <span class="mono">{{ x.clave }}</span>
+          <span class="apagado">{{ x.leccion or '' }}</span>
+          <span class="etiqueta e-{{ x.estado }}" style="margin-left:auto">{{ x.estado }}</span>
+        </div>
+        <div style="padding:16px">
+          <p class="apagado" style="margin-bottom:12px"><i>{{ x.motivo }}</i></p>
+
+          <div class="rejilla r2" style="margin-bottom:14px">
+            <div>
+              <label>Término original</label>
+              <div class="caja-texto">{{ x.original }}</div>
+            </div>
+            <div>
+              <label>Propuesta del sistema</label>
+              <div class="caja-texto" id="p{{ x.id }}">{{ x.propuesta }}</div>
+            </div>
+          </div>
+          {% if t.tipo == 'adaptacion' and ia.disponible and ia.clave.ok and not x.clave.endswith('.href') %}
+          <div class="otra-propuesta" data-url="/trabajo/{{ t.id }}/termino/{{ x.id }}/otra" data-termino="{{ x.id }}">
+            <input type="text" aria-label="Indicación para la nueva propuesta (opcional)"
+                   placeholder="Indicación opcional: más corta, con ejemplos de Málaga…">
+            <button type="button" class="boton claro mini">{{ 'Generar otra propuesta' if not x.propuesta_sin_cambio else 'Generar una propuesta' }}</button>
+            <span class="apagado estado" aria-live="polite"></span>
+          </div>
+          {% endif %}
+
+          <form action="/trabajo/{{ t.id }}/termino/{{ x.id }}" method="post"
+                style="display:flex;gap:10px;align-items:flex-end">
+            <div style="flex:1">
+              <label for="v{{ x.id }}">Texto definitivo</label>
+              {% set largo = x.texto_editable|length %}
+              <textarea id="v{{ x.id }}" name="valor_final" style="min-height:auto"
+                        rows="{{ 1 if largo < 90 else (3 if largo < 400 else 8) }}"
+                        >{{ x.texto_editable }}</textarea>
+              {% if x.candidatas %}
+                <div style="margin-top:8px">
+                  <label>Enlaces candidatos</label>
+                  {% for c in x.candidatas %}
+                    <div style="font-size:12.5px;margin:4px 0">
+                      {% if c.comprobada %}
+                        <button type="button" class="mini boton claro" style="padding:2px 8px"
+                                onclick='document.getElementById("v{{ x.id }}").value = {{ c.url|tojson }}'>Usar</button>
+                      {% else %}<span class="etiqueta e-error">no vale</span>{% endif %}
+                      <a href="{{ c.url }}" target="_blank" rel="noopener">{{ c.titulo or c.titulo_busqueda or c.url }}</a>
+                      <span class="apagado">— {{ c.estado }}{% if c.motivo %} · {{ c.motivo }}{% endif %}</span>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if not x.valor_final and x.propuesta_sin_cambio %}
+                <p class="apagado" style="margin-top:6px">
+                  El sistema no propone ningún cambio: es el texto original. Corrígelo o
+                  confirma que vale tal cual.</p>
+              {% endif %}
+            </div>
+            <button type="submit" class="mini">Guardar término</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+
+      <script>
+      // «Generar otra propuesta»: una llamada corta al asistente. La nueva se pone en la caja
+      // del texto definitivo para editarla; no se guarda hasta pulsar «Guardar término», y lo
+      // que hubiera escrito el editor se puede recuperar.
+      document.querySelectorAll('.otra-propuesta').forEach(function (caja) {
+        var boton = caja.querySelector('button'), estado = caja.querySelector('.estado');
+        var indicacion = caja.querySelector('input');
+        var id = caja.dataset.termino, area = document.getElementById('v' + id);
+        boton.addEventListener('click', function () {
+          var antes = area.value, datos = new FormData();
+          datos.append('indicacion', indicacion.value);
+          boton.disabled = true;
+          estado.textContent = 'Pidiendo una propuesta al asistente… suele tardar menos de un minuto.';
+          fetch(caja.dataset.url, {method: 'POST', body: datos, credentials: 'same-origin'})
+            .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+            .then(function (res) {
+              if (!res[0]) throw new Error(res[1].detail || 'No se ha podido generar.');
+              document.getElementById('p' + id).textContent = res[1].propuesta;
+              area.value = res[1].propuesta;
+              area.rows = Math.max(area.rows, res[1].propuesta.length < 90 ? 1 : (res[1].propuesta.length < 400 ? 3 : 8));
+              estado.innerHTML = '';
+              estado.append('Nueva propuesta en la caja: revísala y pulsa «Guardar término». ');
+              var deshacer = document.createElement('button');
+              deshacer.type = 'button'; deshacer.className = 'enlace'; deshacer.textContent = 'Recuperar lo que había';
+              deshacer.onclick = function () { area.value = antes; estado.textContent = ''; };
+              estado.append(deshacer);
+              if (res[1].motivo) {
+                var m = document.querySelector('#t' + id + ' p.apagado i');
+                if (m) m.textContent = res[1].motivo;
+              }
+            })
+            .catch(function (e) { estado.textContent = e.message; })
+            .finally(function () { boton.disabled = false; });
+        });
+      });
+      </script>
+
+      <form action="/trabajo/{{ t.id }}/guardar" method="post" style="margin-top:20px">
+        <button type="submit">Aplicar decisiones y guardar el paquete</button>
+        <span class="apagado" style="margin-left:12px">
+          Reescribe el paquete con los términos resueltos y lo deja descargable.</span>
+      </form>
+    {% else %}
+      <p class="apagado">No ha quedado nada por decidir en esta unidad.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="tarjeta" id="comentarios">
+  <h2>Feedback del editor</h2>
+  <div class="cuerpo">
+    <p class="apagado" style="margin-bottom:14px">
+      Lo que anotes aquí no se queda en esta pantalla: es la entrada de la próxima versión
+      del procesador.
+    </p>
+    <form action="/trabajo/{{ t.id }}/comentario" method="post">
+      <div class="rejilla r2" style="margin-bottom:12px">
+        <div><label for="autor">Quién revisa</label>
+             <input type="text" id="autor" name="autor" placeholder="{{ request.state.usuario.nombre or 'Nombre o iniciales' }}"></div>
+      </div>
+      <label for="texto">Observaciones</label>
+      <textarea id="texto" name="texto" required
+        placeholder="Qué ha salido bien, qué ha fallado, qué criterio habría que aplicar…"></textarea>
+      <p style="margin-top:12px"><button type="submit">Guardar feedback</button></p>
+    </form>
+
+    {% if t.comentarios %}
+    <table style="margin-top:22px">
+      <thead><tr><th>Fecha</th><th>Quién</th><th>Observación</th><th>Aplicado</th></tr></thead>
+      <tbody>
+      {% for c in t.comentarios %}
+        <tr>
+          <td class="apagado">{{ (c.creado_en or '')[:16].replace('T', ' ') }}</td>
+          <td>{{ c.autor or '—' }}</td>
+          <td>{{ c.texto }}</td>
+          <td>{% if c.aplicado %}<span class="etiqueta e-listo">sí</span>
+              {% else %}<span class="etiqueta e-pendiente">no</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+</fieldset>
+{% endif %}
+
+{% if t.en_uso and t.en_uso.mio %}
+<script>
+// Mientras la persona use la página, el trabajo sigue siendo suyo aunque no guarde nada
+// (leer términos largos lleva su tiempo). Una pestaña olvidada no: sin teclado, ratón ni
+// desplazamiento no hay señal, y el bloqueo caduca solo.
+(function () {
+  var activo = false;
+  ['keydown', 'mousedown', 'mousemove', 'scroll', 'touchstart'].forEach(function (e) {
+    window.addEventListener(e, function () { activo = true; }, {passive: true});
+  });
+  setInterval(function () {
+    if (!activo || document.hidden) return;
+    activo = false;
+    fetch('/trabajo/{{ t.id }}/actividad', {method: 'POST'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.en_uso) location.reload(); })
+      .catch(function () {});
+  }, 120000);
+})();
+</script>
+{% endif %}
+{% endblock %}

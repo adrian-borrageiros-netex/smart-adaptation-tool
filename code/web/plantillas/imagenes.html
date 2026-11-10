@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block titulo %}Imágenes · trabajo {{ t.id }}{% endblock %}
+{% block contenido %}
+
+<p style="margin-bottom:16px"><a href="/trabajo/{{ t.id }}">← Trabajo {{ t.id }}</a></p>
+
+{% set q = request.query_params %}
+{% set trabajando = ia.estado == 'en_curso' %}
+{% set de_imagenes = ia.operacion in ('rehacer_imagenes', 'proponer_imagenes') %}
+{% set con_asistente = ia.disponible and ia.clave.ok %}
+{% set en_curso = ia.imagenes_en_curso or [] %}
+{% set en_cola = ia.imagenes_en_cola or [] %}
+{% set todas_en_curso = trabajando and de_imagenes and not en_curso %}
+<div class="tarjeta">
+  <h2>Imágenes de la unidad ({{ imagenes|length }})</h2>
+  {% set ficheros = imagenes | sum(attribute='copias', start=[]) | length + imagenes|length %}
+  <div class="cuerpo">
+    <p style="margin:0 0 10px">Cualquier imagen se puede sustituir por otra: un esquema rehecho por diseño, una
+      fotografía del territorio de destino o una versión mejor. La nueva se ajusta a la
+      proporción de la original y se guarda con su mismo nombre, así que la unidad no cambia
+      por dentro. Se aplica ya y en cada proceso; la versión imprimible la recoge al guardar o
+      reprocesar.</p>
+    <p class="apagado" style="margin:0">Al sustituir una imagen, su título y su texto alternativo pasan a
+      los términos pendientes. Las fotografías de lugares reales tienen que ser reales.
+      {% if ficheros > imagenes|length %}La unidad tiene {{ ficheros }} ficheros de imagen: algunas
+      figuras están varias veces, a distinto tamaño (la galería, la lección), y aquí salen una vez.{% endif %}</p>
+    {% if q.get('error') %}<div class="aviso" style="margin:14px 0 0">{{ q.get('error') }}</div>{% endif %}
+    {% if not puede_escribir %}
+      <div class="aviso atencion" style="margin:14px 0 0">Lo está trabajando {{ t.en_uso.nombre }}: puedes ver las imágenes, pero no sustituirlas sin tomar el trabajo.</div>
+    {% endif %}
+
+    {% if con_asistente %}
+    <div class="nota" style="margin-top:14px" id="estado-asistente">
+      {% if q.get('encolada') %}<p style="margin:0 0 10px"><b>Puesto en la cola</b> (lugar {{ q.get('encolada') }}): empezará cuando acabe lo que está haciendo el asistente.</p>{% endif %}
+      {% if trabajando %}
+        <p style="margin:0 0 10px"><b>El asistente está trabajando</b>{% if not de_imagenes %} en otra operación ({{ ia.operacion }}){% endif %}:
+          <span class="mensaje-ia">{{ (ia.mensaje or '').split('\n')[0] }}</span>
+          {% if ia.total %}<span class="avance-ia">({{ ia.hechas }} de {{ ia.total }})</span>{% endif %}</p>
+        {% if ia.cola.pendientes %}
+        <p style="margin:0 0 10px">En cola: {% for p in ia.cola.pendientes %}{{ p.operacion | replace('rehacer_imagenes', 'rehacer') | replace('proponer_imagenes', 'buscar fotos') }}{% if p.huellas %} ({{ p.huellas|length }} {{ 'imagen' if p.huellas|length == 1 else 'imágenes' }}){% else %} (todas){% endif %}{% if p.quien %}, {{ p.quien }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}.</p>
+        {% endif %}
+        <p class="apagado" style="margin:0 0 10px">Puedes seguir pidiendo cosas: se ponen a la cola. La página se actualiza sola al terminar cada una.</p>
+      {% else %}
+        {% if de_imagenes and ia.mensaje %}<p style="margin:0 0 10px"><b>Último resultado:</b> {{ ia.mensaje }}</p>{% endif %}
+        <p style="margin:0 0 10px">El asistente puede hacer dos cosas con las imágenes, imagen a imagen o todas a la vez:</p>
+        <ul style="margin:0 0 12px 18px">
+          <li><b>Rehacer</b> las que tienen rótulos: localiza los rótulos, los borra reconstruyendo lo que hay detrás, los escribe traducidos y relee el resultado. Lo que no da por bueno vuelve a la original.</li>
+          {% if t.tipo == 'adaptacion' %}<li><b>Buscar fotos</b> reales con licencia libre en Wikimedia Commons para las del territorio de origen, y proponerte las que sirven. Eliges tú.</li>{% endif %}
+        </ul>
+      {% endif %}
+      <fieldset class="solo-lectura" style="display:flex;gap:10px;flex-wrap:wrap" {% if not puede_escribir %}disabled{% endif %}>
+        <form method="post" action="/trabajo/{{ t.id }}/imagenes/asistente/rehacer_imagenes">
+          <button type="submit" class="mini">{{ 'Poner en cola: rehacer' if trabajando else 'Rehacer' }} las que van a diseño</button></form>
+        {% if t.tipo == 'adaptacion' %}
+        <form method="post" action="/trabajo/{{ t.id }}/imagenes/asistente/proponer_imagenes">
+          <button type="submit" class="boton claro mini">{{ 'Poner en cola: buscar fotos' if trabajando else 'Buscar fotos' }} para las del territorio</button></form>
+        {% endif %}
+      </fieldset>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if del_experto %}
+<div class="tarjeta">
+  <h2>Imágenes de la documentación del experto ({{ del_experto|length }})</h2>
+  <div class="cuerpo" style="display:flex;gap:10px;flex-wrap:wrap">
+    {% for x in del_experto %}
+    <figure style="margin:0;width:120px"><a href="{{ x.url }}" target="_blank"><img src="{{ x.url }}" alt="{{ x.nombre }}" style="width:120px;height:90px;object-fit:contain;background:#fff;border-radius:6px"></a>
+      <figcaption class="apagado" style="font-size:11.5px;word-break:break-all">{{ x.documento }} · {{ x.nombre }}</figcaption></figure>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<fieldset class="solo-lectura" {% if not puede_escribir %}disabled{% endif %}>
+<div class="rejilla-imagenes">
+{% for i in imagenes %}
+  {% set e = {'diseño': ('e-error', 'va a diseño'), 'territorial': ('e-pendiente', 'territorial'),
+              'sustituida': ('e-listo', 'sustituida'), 'rehecha': ('e-revisado', 'rehecha'),
+              'parcial': ('e-pendiente', 'rehecha en parte'),
+              'con texto': ('e-pendiente', 'con texto'), 'sin texto': ('', 'sin texto')}[i.estado] %}
+  {% set ocupada = i.huellas | select('in', en_curso) | list %}
+  {% set encolada = i.huellas | select('in', en_cola) | list %}
+  <div class="tarjeta ficha-imagen{% if q.get('hecho') == i.huella %} recien{% endif %}" id="i{{ i.huella }}">
+    <div class="miniaturas">
+      <a href="{{ i.url_original }}" target="_blank" title="Original"><img src="{{ i.url_original }}" alt="Original: {{ i.fichero }}" loading="lazy"></a>
+      {% if i.url_actual and i.estado in ('sustituida', 'rehecha') %}
+      <a href="{{ i.url_actual }}" target="_blank" title="En el trabajo"><img src="{{ i.url_actual }}" alt="En el trabajo: {{ i.fichero }}" loading="lazy"></a>
+      {% endif %}
+    </div>
+    <div class="cuerpo">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+        {% if e[0] %}<span class="etiqueta {{ e[0] }}">{{ e[1] }}</span>{% else %}<span class="apagado">{{ e[1] }}</span>{% endif %}
+        <span class="mono apagado" style="font-size:12px;word-break:break-all">{{ i.fichero.split('/')[-1] }}</span>
+        <span class="apagado" style="font-size:12px">{{ i.ancho }}×{{ i.alto }}</span>
+      </div>
+      {% if i.copias %}
+      <details style="margin:0 0 8px;font-size:12.5px"><summary class="apagado">La unidad la usa {{ i.copias|length + 1 }} veces, a distinto tamaño: se cambian todas a la vez.</summary>
+        <ul style="margin:6px 0 0 18px">
+          <li><span class="mono">{{ i.fichero }}</span> {{ i.ancho }}×{{ i.alto }} (principal)</li>
+          {% for c in i.copias %}<li><span class="mono">{{ c.fichero }}</span> {{ c.ancho }}×{{ c.alto }} — {{ c.estado }}</li>{% endfor %}
+        </ul></details>
+      {% endif %}
+      {% if i.motivo %}<p class="apagado" style="margin:0 0 8px;font-size:12.5px">{{ i.motivo }}</p>{% endif %}
+      {% if i.localizada_por_asistente %}<p class="apagado" style="margin:0 0 8px;font-size:12.5px">Rótulos localizados por el asistente.</p>{% endif %}
+      {% if ocupada or (todas_en_curso and i.estado in ('diseño', 'parcial')) %}
+        <p style="margin:0 0 8px"><span class="etiqueta e-procesando">el asistente está con ella</span></p>
+      {% elif encolada %}
+        <p style="margin:0 0 8px"><span class="etiqueta e-encolado">en cola</span></p>
+      {% endif %}
+      {% if con_asistente and not ocupada and not encolada and (i.con_texto or (t.tipo == 'adaptacion')) %}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        {% if i.con_texto %}
+        <form method="post" action="/trabajo/{{ t.id }}/imagenes/asistente/rehacer_imagenes">
+          <input type="hidden" name="huella" value="{{ i.huella }}">
+          <button type="submit" class="boton claro mini" title="El asistente localiza los rótulos, la rehace y la relee">{{ 'Rehacer otra vez' if i.estado == 'rehecha' else 'Rehacer con el asistente' }}{{ ' (a la cola)' if trabajando }}</button></form>
+        {% endif %}
+        {% if t.tipo == 'adaptacion' %}
+        <form method="post" action="/trabajo/{{ t.id }}/imagenes/asistente/proponer_imagenes">
+          <input type="hidden" name="huella" value="{{ i.huella }}">
+          <button type="submit" class="boton claro mini" title="Fotos reales con licencia libre de Wikimedia Commons">{{ 'Buscar otras fotos' if i.propuestas else 'Buscar fotos' }}{{ ' (a la cola)' if trabajando }}</button></form>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if i.propuestas %}
+      <div class="propuestas-commons">
+        {% if i.propuestas.candidatas %}
+        <p class="apagado" style="margin:0 0 6px;font-size:12.5px">Fotos propuestas: {{ i.propuestas.que_buscar }}</p>
+        <div class="rejilla-commons">
+        {% for c in i.propuestas.candidatas %}
+          <figure>
+            <a href="{{ c.pagina }}" target="_blank" rel="noopener" title="{{ c.titulo }}"><img src="{{ c.miniatura }}" alt="{{ c.titulo }}" loading="lazy"></a>
+            <figcaption>{{ c.motivo }}<br><span class="apagado">{{ c.autor }} · {{ c.licencia }}</span></figcaption>
+            <form method="post" action="/trabajo/{{ t.id }}/imagenes/{{ i.huella }}/commons"
+                  onsubmit="return confirm('Se sustituirá la imagen por esta foto. Su licencia ({{ c.licencia }}) obliga a citar al autor en los créditos de la unidad.')">
+              <input type="hidden" name="indice" value="{{ loop.index0 }}">
+              <button type="submit" class="mini">Usar esta</button></form>
+          </figure>
+        {% endfor %}
+        </div>
+        {% else %}
+        <p class="apagado" style="margin:0 0 8px;font-size:12.5px">No se ha encontrado en Commons ninguna foto que sirva para «{{ i.propuestas.que_buscar }}». Habrá que buscarla o encargarla.</p>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if i.sustitucion %}
+        <p style="margin:0 0 8px;font-size:12.5px">Sustituida por <b>{{ i.sustitucion.nombre or 'una imagen' }}</b>
+          {% if i.sustitucion.autor %}({{ i.sustitucion.autor }}, {{ i.sustitucion.creado_en | hora }}){% endif %}.</p>
+        <form method="post" action="/trabajo/{{ t.id }}/imagenes/{{ i.huella }}/deshacer" style="margin-bottom:8px"
+              onsubmit="return confirm('¿Volver a la imagen original?')">
+          <button type="submit" class="boton claro mini">Volver a la original</button></form>
+      {% endif %}
+      <form method="post" action="/trabajo/{{ t.id }}/imagenes/{{ i.huella }}" enctype="multipart/form-data"
+            style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="file" name="fichero" accept="image/jpeg,image/png,image/webp,image/gif" required
+               aria-label="Imagen nueva para {{ i.fichero }}" style="max-width:100%">
+        <select name="ajuste" aria-label="Cómo ajustarla">
+          <option value="recortar">Llenar el hueco (recorta)</option>
+          <option value="encajar">Entera (con márgenes)</option>
+        </select>
+        <button type="submit" class="mini">{{ 'Cambiar' if i.sustitucion else 'Sustituir' }}</button>
+      </form>
+      {% if del_experto %}
+      <form method="post" action="/trabajo/{{ t.id }}/imagenes/{{ i.huella }}/desde-documento"
+            style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+        <select name="imagen" aria-label="Imagen de la documentación del experto" style="max-width:60%">
+          {% for x in del_experto %}<option value="{{ x.documento_id }}:{{ x.indice }}">{{ x.documento }} · {{ x.nombre }}</option>{% endfor %}
+        </select>
+        <input type="hidden" name="ajuste" value="recortar">
+        <button type="submit" class="boton claro mini">Usar la del experto</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+{% endfor %}
+</div>
+</fieldset>
+
+{% if trabajando %}
+<script>
+// Mientras trabaja el asistente, la página pregunta cada 5 s cómo va y solo se recarga
+// cuando cambia algo que se vea (termina una operación o se mueve la cola). Antes se
+// recargaba entera cada 5 s, y se perdía el fichero que alguien estaba eligiendo.
+(function () {
+  function huella(e) {
+    return [e.estado, e.operacion, e.cola.pendientes.length, (e.cola.actual || {}).operacion,
+            ((e.cola.actual || {}).huellas || []).join()].join('|');
+  }
+  // Lo que se pintó: si cambia antes de la primera consulta, también se recarga.
+  var antes = huella({estado: {{ ia.estado|tojson }}, operacion: {{ ia.operacion|tojson }},
+                      cola: {{ ia.cola|tojson }}});
+  function ocupado() {
+    var f = document.activeElement;
+    return Array.prototype.some.call(document.querySelectorAll('input[type=file]'), function (i) { return i.files.length; })
+      || (f && (f.tagName === 'SELECT' || f.tagName === 'INPUT'));
+  }
+  function mirar() {
+    fetch('/trabajo/{{ t.id }}/asistente/estado', {credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (e) {
+        var caja = document.querySelector('#estado-asistente .mensaje-ia');
+        if (caja) caja.textContent = (e.mensaje || '').split('\n')[0];
+        var avance = document.querySelector('#estado-asistente .avance-ia');
+        if (avance && e.total) avance.textContent = '(' + e.hechas + ' de ' + e.total + ')';
+        if (huella(e) !== antes && !ocupado()) { location.replace(location.pathname + location.hash); return; }
+        setTimeout(mirar, 5000);
+      })
+      .catch(function () { setTimeout(mirar, 15000); });
+  }
+  setTimeout(mirar, 5000);
+})();
+</script>
+{% endif %}
+
+<style>
+  .rejilla-imagenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+  .ficha-imagen { margin: 0; }
+  .ficha-imagen.recien { box-shadow: 0 0 0 2px var(--accent); }
+  .miniaturas { display: flex; gap: 6px; padding: 10px; background: var(--section); }
+  .miniaturas a { flex: 1; min-width: 0; }
+  .miniaturas img { width: 100%; height: 150px; object-fit: contain; display: block; background: #fff; border-radius: 6px; }
+  .propuestas-commons { margin: 4px 0 10px; }
+  .rejilla-commons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .rejilla-commons figure { margin: 0; font-size: 12px; }
+  .rejilla-commons img { width: 100%; height: 100px; object-fit: cover; display: block; border-radius: 6px; background: var(--section); }
+  .rejilla-commons figcaption { margin: 4px 0; line-height: 1.35; }
+</style>
+{% endblock %}

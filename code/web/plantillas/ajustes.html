@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titulo %}Ajustes{% endblock %}
+{% block contenido %}
+<h1 class="s-titulo">Ajustes</h1>
+<p class="s-subtitulo">Bloqueo de trabajos y dónde se publica en learningCloud cada adaptación.</p>
+{% if error %}<div class="aviso">{{ error }}</div>{% endif %}
+{% if guardado %}<div class="aviso ok">Guardado.</div>{% endif %}
+{% if not es_admin %}<div class="aviso atencion">Solo un usuario con el rol admin puede cambiar los ajustes. Puedes consultarlos.</div>{% endif %}
+
+{% if asistente %}
+<div class="tarjeta">
+  <h2>Asistente</h2>
+  <div class="cuerpo" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    {% if asistente.disponible and asistente.clave.ok %}
+      <span class="etiqueta e-listo">funciona</span>
+      <span>La API de Anthropic acepta la clave del servidor. Modelo: <span class="mono">{{ asistente.modelo }}</span>.</span>
+    {% elif asistente.disponible %}
+      <span class="etiqueta e-error">no disponible</span>
+      <span style="flex:1;min-width:260px">{{ asistente.clave.motivo }} La clave se cambia en el fichero <span class="mono">.env</span> del servidor y hay que reiniciar la aplicación.</span>
+    {% else %}
+      <span class="etiqueta e-error">sin configurar</span>
+      <span>Falta <span class="mono">ANTHROPIC_API_KEY</span> en el servidor.</span>
+    {% endif %}
+    <a class="boton claro mini" href="/ajustes?comprobar=1" style="margin-left:auto">Comprobar ahora</a>
+  </div>
+</div>
+{% endif %}
+
+<form method="post" action="/ajustes">
+<div class="tarjeta">
+  <h2>Bloqueo de trabajos</h2>
+  <div class="cuerpo">
+    <p style="margin:0 0 12px">Quien abre un trabajo libre pasa a trabajar en él, y nadie más puede cambiarlo mientras siga activo. Si pasa este tiempo sin actividad suya, el trabajo queda libre. Un administrador puede tomarlo o liberarlo antes desde la pantalla del trabajo.</p>
+    <label for="minutos_bloqueo">Minutos sin actividad hasta liberarlo</label>
+    <input type="number" id="minutos_bloqueo" name="minutos_bloqueo" min="5" max="480" step="1"
+           value="{{ minutos_bloqueo }}" style="width:120px" {% if not es_admin %}disabled{% endif %}>
+  </div>
+</div>
+
+<div class="tarjeta">
+  <h2>Proyectos destino en learningCloud</h2>
+  <div class="cuerpo">
+    <p style="margin:0 0 6px">Al enviar una unidad adaptada se crea, dentro del proyecto de su comunidad, la misma ruta de carpetas que tenía en su proyecto de origen. Por ejemplo, de <span class="mono">AMTEGA / EDIXGAL / 06_primaria / 02_lengua / UD_05</span> a <span class="mono">&lt;proyecto de Andalucía&gt; / EDIXGAL / 06_primaria / 02_lengua / UD_05</span>.</p>
+    <p class="apagado" style="margin:0">Pega la dirección del proyecto tal como sale en el navegador ({{ ajustes.entorno }}/app/project/…) o solo su identificador. El nombre es para reconocerlo aquí; el marcador comprueba el real al enviar. Sin proyecto, esa comunidad no se puede enviar.</p>
+  </div>
+  <table>
+    <thead><tr><th>Comunidad</th><th>Proyecto destino (dirección o id)</th><th>Nombre</th></tr></thead>
+    <tbody>
+    {% for c in comunidades %}
+      {% set d = ajustes.destinos.get(c) or {} %}
+      <tr>
+        <td><b>{{ c }}</b></td>
+        <td><input type="text" name="proyecto_{{ loop.index0 }}" value="{{ d.proyecto or '' }}" style="width:100%"
+                   aria-label="Proyecto destino de {{ c }}" {% if not es_admin %}disabled{% endif %}
+                   placeholder="{{ ajustes.entorno }}/app/project/…"></td>
+        <td><input type="text" name="nombre_{{ loop.index0 }}" value="{{ d.nombre or '' }}" style="width:100%"
+                   aria-label="Nombre del proyecto de {{ c }}" {% if not es_admin %}disabled{% endif %}></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if es_admin %}
+  <div class="cuerpo">
+    <button type="submit">Guardar</button>
+    {% if ajustes.actualizado_por %}<span class="apagado" style="margin-left:12px">Último cambio: {{ ajustes.actualizado_por }}</span>{% endif %}
+  </div>
+  {% endif %}
+</div>
+</form>
+{% endblock %}

@@ -1,0 +1,7 @@
+# Tests template smart-adaptation-tool
+#unit-test:
+# - /path/to/script/in/repo.sh
+# - another-comand.sh
+#integration-tests:
+# - /path/to/script/in/repo.sh
+# - another-comand.sh

@@ -1,0 +1,23 @@
+name: "sync-with-pr"
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - release
+      - release/*
+  repository_dispatch:
+    types:
+      [
+        semantic-release-main,
+        semantic-release-develop,
+        semantic-release-release,
+      ]
+
+permissions: write-all
+
+jobs:
+  sync-with-pr:
+    uses: netexknowledge/.github/.github/workflows/sync-with-pr-reusable.yml@sync-with-pr-reusable#v1
+    secrets: inherit

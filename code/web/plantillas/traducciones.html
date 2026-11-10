@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block titulo %}Traducciones · trabajo {{ t.id }}{% endblock %}
+{% block contenido %}
+
+<p style="margin-bottom:16px"><a href="/trabajo/{{ t.id }}">← Trabajo {{ t.id }}</a></p>
+
+{% set sin_revisar = frases|selectattr('revisada', 'equalto', false)|list %}
+<div class="tarjeta">
+  <h2>{% if todas %}Todas las traducciones automáticas de la unidad ({{ frases|length }},
+      {{ sin_revisar|length }} por revisar){% else %}Traducciones automáticas por revisar
+      ({{ frases|length }}){% endif %}</h2>
+  <div class="cuerpo">
+    <p class="apagado" style="margin-bottom:12px">
+      El asistente las ha aplicado para que se pueda ver el paquete, pero no cuentan como
+      aprobadas hasta que alguien las confirma. Solo las aprobadas se usan como terminología
+      de referencia en las unidades siguientes, para que un error no se propague.
+      Las aprobadas se pueden seguir corrigiendo desde la vista completa.
+    </p>
+    <p style="margin-bottom:16px">
+      {% if todas %}<a href="/trabajo/{{ t.id }}/traducciones">Ver solo las que están por revisar</a>
+      {% else %}<a href="/trabajo/{{ t.id }}/traducciones?todas=1">Ver todas, también las aprobadas</a>{% endif %}
+    </p>
+
+    {% if request.query_params.get('aprobadas') %}
+      <div class="aviso ok" style="margin-bottom:16px">Traducciones aprobadas.</div>
+    {% endif %}
+    {% if request.query_params.get('devueltas') %}
+      <div class="aviso ok" style="margin-bottom:16px">
+        {{ request.query_params.get('devueltas') }} traducciones vuelven a estar por revisar.</div>
+    {% endif %}
+
+    {% if not puede_escribir %}
+      <div class="aviso atencion">Lo está trabajando {{ t.en_uso.nombre }}: puedes consultar las traducciones, pero no aprobarlas ni corregirlas sin tomar el trabajo.</div>
+    {% endif %}
+
+    {% if frases %}
+      <fieldset class="solo-lectura" {% if not puede_escribir %}disabled{% endif %}>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
+        {% if sin_revisar %}
+        <form method="post" action="/trabajo/{{ t.id }}/traducciones/aprobar-todas"
+              onsubmit="return confirm('¿Aprobar las {{ sin_revisar|length }} traducciones pendientes tal como están?')">
+          <button type="submit">Aprobar todas tal cual</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/trabajo/{{ t.id }}/reprocesar">
+          <button type="submit" class="boton claro">Aplicar mis correcciones al paquete</button>
+        </form>
+        {% if todas and frases|length > sin_revisar|length %}
+        <form method="post" action="/trabajo/{{ t.id }}/traducciones/devolver"
+              onsubmit="return confirm('¿Volver a marcar como por revisar todo lo que tradujo el asistente en este trabajo?')">
+          <button type="submit" class="boton claro">Devolver a revisión</button>
+        </form>
+        {% endif %}
+        <span class="apagado">Las correcciones se guardan al momento; se ven en el paquete al aplicarlas.</span>
+      </div>
+
+      <table>
+        <thead><tr><th style="width:16%">Lección</th><th style="width:34%">Original</th>
+                   <th>Traducción</th>{% if todas %}<th style="width:9%">Estado</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for f in frases %}
+          <tr id="f{{ f.id }}">
+            <td class="apagado">{{ f.leccion or '—' }}</td>
+            <td>{{ f.origen }}
+              {% if 'nota:' in (f.procedencia or '') %}
+                <div class="apagado" style="margin-top:6px"><i>{{ f.procedencia.split('nota:', 1)[1] }}</i></div>
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" action="/trabajo/{{ t.id }}/traducciones/{{ f.id }}{{ '?todas=1' if todas else '' }}"
+                    style="display:flex;gap:8px;align-items:flex-start">
+                <textarea name="destino" rows="{{ 1 if f.destino|length < 80 else 3 }}"
+                          style="min-height:auto">{{ f.destino }}</textarea>
+                <button type="submit" class="mini">{{ 'Guardar' if f.revisada else 'Aprobar' }}</button>
+              </form>
+            </td>
+            {% if todas %}<td>{% if f.revisada %}<span class="etiqueta e-revisado">aprobada</span>
+                {% else %}<span class="etiqueta e-pendiente">por revisar</span>{% endif %}</td>{% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </fieldset>
+    {% else %}
+      <p class="apagado">{% if todas %}Esta unidad no tiene traducciones automáticas.{% else %}
+        No hay traducciones automáticas pendientes en esta unidad.
+        <a href="/trabajo/{{ t.id }}/traducciones?todas=1">Ver las aprobadas</a> para corregir alguna.{% endif %}</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

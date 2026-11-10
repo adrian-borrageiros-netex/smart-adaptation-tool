@@ -1,0 +1,56 @@
+# Sarela · adaptación de contenidos, en la plataforma de demos: adaptacion.sarela.tech.
+#
+# Necesita la plataforma arrancada (~/plataforma): la red «plataforma», Postgres y Keycloak.
+# Caddy la publica por las etiquetas; no hay que tocar ningún Caddyfile.
+#
+#   ~/plataforma/scripts/nueva_app.sh adaptacion ~/sarela-adaptacion admin editor   # una vez
+#   ./despliegue/subir.sh                                                            # desde el PC
+#
+# .env.plataforma lo escribe nueva_app.sh (Keycloak, base de datos). .env es de la app:
+# ANTHROPIC_API_KEY y DEMOS_HOST. Ninguno se versiona.
+
+services:
+  app:
+    build:
+      context: .
+      additional_contexts:
+        kit: ${KIT_DIR:-../plataforma/kit}
+    restart: unless-stopped
+    env_file:
+      - path: .env.plataforma
+        required: true
+      - path: .env
+        required: false
+    environment:
+      SARELA_DATOS: /datos
+      # Auditoría común de la plataforma (Ajustes → Auditoría). Hace falta que el cliente
+      # «adaptacion» tenga cuenta de servicio: ~/plataforma/scripts/alta_auditoria.sh adaptacion.
+      # La cola, en el volumen de datos: si el servicio no responde, sobrevive a un reinicio.
+      DEMOS_AUDITORIA_URL: http://auditoria:8000
+      DEMOS_KEYCLOAK_INTERNO: http://keycloak:8080
+      DEMOS_AUDITORIA_COLA: /datos/auditoria/cola.jsonl
+    volumes:
+      - datos:/datos
+    networks: [plataforma]
+    # 2 CPU y 8 GB para todo el servidor. Imprimir con Chromium y leer imágenes con
+    # Tesseract tiene picos de 2,5 GB.
+    cpus: 1.5
+    mem_limit: 3g
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    labels:
+      caddy: ${DEMOS_HOST:?falta DEMOS_HOST en .env; ejecuta nueva_app.sh}
+      caddy.reverse_proxy: "{{upstreams 8800}}"
+      # Un paquete ronda los 25 MB y la descarga de un fuente de Author con actividades, más.
+      caddy.request_body.max_size: 300MB
+      caddy.reverse_proxy.transport: http
+      caddy.reverse_proxy.transport.read_timeout: 10m
+      caddy.reverse_proxy.transport.write_timeout: 10m
+
+volumes:
+  datos:
+
+networks:
+  plataforma:
+    external: true

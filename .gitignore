@@ -1,0 +1,35 @@
+# Lista de lo que SÍ entra en el repositorio. Todo lo demás queda fuera por defecto:
+# unidades de clientes (courses/, fuente/), sus derivados (adaptacion/), credenciales
+# (api/, .env), datos (.demostrador/, .trabajo/), informes y documentos de Sarela
+# (entregables/, documentacion-sarela/) y CLAUDE.md, que lleva identificadores de clientes
+# y centros. Para añadir algo nuevo hay que nombrarlo aquí a propósito.
+#
+# Estructura de netexknowledge: el código en code/, la documentación en docs/, las pruebas
+# del pipeline en tests/ y la configuración corporativa en la raíz y en .github/.
+/*
+!/.gitignore
+!/.gitattributes
+!/.github/
+!/catalog-info.yaml
+!/mkdocs.yml
+!/PLAN.md
+!/docs/
+!/tests/
+!/code/
+
+/code/*
+!/code/.dockerignore
+!/code/.env.ejemplo
+!/code/Dockerfile
+!/code/docker-compose.yml
+!/code/requirements.txt
+!/code/mcp_servidor.py
+!/code/src/
+!/code/web/
+!/code/scripts/
+!/code/despliegue/
+
+__pycache__/
+*.pyc
+code/despliegue/usuarios
+code/despliegue/usuarios.tmp

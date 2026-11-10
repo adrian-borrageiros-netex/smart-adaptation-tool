@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block titulo %}learningCloud{% endblock %}
+{% block contenido %}
+<h1 class="s-titulo">learningCloud</h1>
+<p class="s-subtitulo">Trae el fuente de una unidad y sus actividades desde su carpeta de learningCloud, y envía allí las unidades adaptadas, en la misma ruta de carpetas, dentro del proyecto de su comunidad.</p>
+
+<div class="aviso atencion" id="conexion" hidden>Esperando a learningCloud…</div>
+<div class="aviso atencion" id="sin-marcador" hidden>Esta página no puede traer ni enviar por sí sola: hay que abrirla desde learningCloud. Abre learningCloud en otra pestaña, pulsa allí el marcador «Sarela» (ver «Cómo se usa») y sigue en la ventana que se abre.</div>
+
+<div class="tarjeta" id="traer" hidden>
+  <h2>Traer a Sarela</h2>
+  <div class="cuerpo">
+    <p id="t-carpeta" style="margin:0 0 12px"></p>
+    <button type="button" id="t-boton">Traer esta carpeta</button>
+    <p id="estado" class="apagado" style="margin:12px 0 0" hidden></p>
+    <div id="detalle" hidden style="margin-top:16px">
+      <div class="rejilla r3" style="margin-bottom:16px">
+        <div><div class="cifra" id="d-unidad">—</div><div class="cifra-pie">unidad</div></div>
+        <div><div class="cifra" id="d-actividades">0</div><div class="cifra-pie">actividades</div></div>
+        <div><div class="cifra" id="d-tamano">0</div><div class="cifra-pie">MB</div></div>
+      </div>
+      <p class="apagado" id="d-origen" style="margin-bottom:12px"></p>
+      <div class="aviso atencion" id="d-omitidos" hidden></div>
+      <button type="button" id="subir">Subir a Sarela</button>
+    </div>
+    <div id="resultado" hidden></div>
+  </div>
+</div>
+
+<div class="tarjeta">
+  <h2>Enviar a learningCloud</h2>
+  <div class="cuerpo">
+    <p class="apagado" style="margin:0">Unidades adaptadas a partir de un fuente de Author. Cada una se importa en el proyecto de su comunidad ({% if es_admin %}<a href="/ajustes">Ajustes</a>{% else %}Ajustes{% endif %}), en la misma ruta que tenía en origen. Si la carpeta final ya tiene algo, no se importa nada en ella.</p>
+  </div>
+  {% if enviables %}
+  <table id="envios">
+    <thead><tr><th></th><th>Unidad</th><th>Destino</th><th>Ruta</th><th>Actividades</th><th>Estado</th></tr></thead>
+    <tbody>
+    {% for f in enviables %}
+      <tr data-trabajo="{{ f.trabajo }}">
+        <td><input type="checkbox" class="elegir" value="{{ f.trabajo }}" aria-label="Enviar el trabajo {{ f.trabajo }}" disabled></td>
+        <td><b>{{ f.titulo }}</b><br><a class="apagado" href="/trabajo/{{ f.trabajo }}">trabajo {{ f.trabajo }}</a></td>
+        <td>{{ f.comunidad or '—' }}{% if f.destino %}<br><span class="apagado">{{ f.destino.nombre or f.destino.proyecto }}</span>{% endif %}</td>
+        <td class="mono">{% if f.origen.ruta %}{{ f.origen.ruta | join(' / ') }}{% elif f.origen.carpeta %}<span class="apagado">se lee al enviar</span>{% else %}—{% endif %}</td>
+        <td>{{ f.actividades | length }}</td>
+        <td class="estado-envio">
+          {% if f.problemas %}<span class="error-texto">{{ f.problemas | join(' ') }}</span>
+          {% elif f.envio %}<span class="etiqueta e-{{ {'enviado': 'listo', 'conflicto': 'pendiente'}.get(f.envio.estado, 'error') }}">{{ f.envio.estado }}</span>
+            {% if f.envio.url %}<a href="{{ f.envio.url }}" target="_blank" rel="noopener">abrir</a>{% endif %}
+            <br><span class="apagado">{{ f.envio.mensaje }}</span>
+          {% else %}<span class="apagado">sin enviar</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="cuerpo" id="e-acciones" hidden>
+    <button type="button" id="e-boton" disabled>Enviar las elegidas</button>
+  </div>
+  {% else %}
+  <div class="cuerpo"><p class="apagado" style="margin:0">Todavía no hay ningún trabajo terminado sobre un fuente de Author.</p></div>
+  {% endif %}
+</div>
+
+<div class="tarjeta">
+  <h2>Cómo se usa</h2>
+  <div class="cuerpo">
+    <p style="margin:0 0 14px"><b>Una vez:</b> arrastra este botón a la barra de marcadores del navegador. Si tenías el anterior, «Enviar a Sarela», sustitúyelo por este.</p>
+    <p style="margin:0 0 18px"><a class="boton claro" href="{{ marcador }}" title="Arrástralo a la barra de marcadores">Sarela</a></p>
+    <p style="margin:0 0 6px"><b>Para traer una unidad:</b> en learningCloud, abre la carpeta que contiene la unidad y sus actividades y pulsa el marcador. En la ventana de Sarela que se abre, «Traer esta carpeta» y después «Subir a Sarela».</p>
+    <p style="margin:0 0 14px"><b>Para enviar unidades adaptadas:</b> abre cualquier página de learningCloud y pulsa el marcador. En la ventana de Sarela, elige las unidades y «Enviar las elegidas».</p>
+    <p class="apagado" style="margin:0">Todo se hace con tu sesión de learningCloud, que no sale de learningCloud. Esta página solo atiende a {{ origenes | join(', ') }}. Si el navegador bloquea la ventana, permite las ventanas emergentes de learningCloud.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var ORIGENES = {{ origenes | tojson }};
+  var ENVIABLES = {{ enviables | tojson }};
+  var lc = null, recibido = null, esperas = {};
+  var $ = function (id) { return document.getElementById(id); };
+  var porTrabajo = {};
+  ENVIABLES.forEach(function (f) { porTrabajo[f.trabajo] = f; });
+
+  // Abierta por el marcador: se avisa a learningCloud de que esta ventana está lista
+  // (también tras iniciar sesión) hasta que conteste. Un targetOrigin que no casa se descarta.
+  if (window.opener) {
+    $("conexion").hidden = false;
+    var latido = setInterval(function () {
+      if (lc || !window.opener) { clearInterval(latido); return; }
+      ORIGENES.forEach(function (o) { try { window.opener.postMessage({tipo: "sarela-listo"}, o); } catch (e) {} });
+    }, 700);
+    // Si nadie contesta es que la pestaña que abrió esta ventana ya no tiene el marcador
+    // escuchando: se recargó, o esta ventana se recargó o abrió de otra forma.
+    setTimeout(function () {
+      if (lc) return;
+      $("conexion").textContent = "learningCloud no contesta. Cierra esta ventana, recarga la pestaña de learningCloud (F5) y vuelve a pulsar allí el marcador «Sarela».";
+    }, 10000);
+  } else {
+    $("sin-marcador").hidden = false;
+  }
+
+  function aLearningCloud(mensaje, transferir) { window.opener.postMessage(mensaje, lc, transferir || []); }
+
+  function esperar(trabajo) {
+    return new Promise(function (resolver, rechazar) {
+      esperas[trabajo] = resolver;
+      var vigia = setInterval(function () {
+        if (!esperas[trabajo]) { clearInterval(vigia); return; }
+        if (!window.opener || window.opener.closed) {
+          clearInterval(vigia); delete esperas[trabajo];
+          rechazar(new Error("Se ha cerrado la pestaña de learningCloud."));
+        }
+      }, 1000);
+    });
+  }
+
+  window.addEventListener("message", function (e) {
+    if (ORIGENES.indexOf(e.origin) === -1 || e.source !== window.opener || !e.data) return;
+    var d = e.data;
+    if (d.tipo === "lc-hola") {
+      if (lc) return;
+      lc = e.origin;
+      $("conexion").className = "aviso ok";
+      $("conexion").textContent = "Conectado con learningCloud (" + e.origin + "): " + (d.titulo || "") + ".";
+      $("traer").hidden = false;
+      if (d.carpeta) { $("t-carpeta").textContent = "Carpeta abierta: " + (d.titulo || d.carpeta) + "."; }
+      else {
+        $("t-carpeta").textContent = "Para traer una unidad, learningCloud tiene que estar dentro de su carpeta: ahora está en la raíz del proyecto" +
+          (d.titulo ? " «" + d.titulo + "»" : "") + " (la dirección no lleva «?folder=…»). Entra en la carpeta que contiene la unidad y sus actividades, cierra esta ventana y vuelve a pulsar el marcador.";
+        $("t-boton").hidden = true;
+      }
+      document.querySelectorAll(".elegir").forEach(function (c) {
+        var f = porTrabajo[c.value];
+        c.disabled = !!(f && f.problemas.length);
+      });
+      if ($("e-acciones")) { $("e-acciones").hidden = false; }
+      return;
+    }
+    if (d.tipo === "lc-progreso" || d.tipo === "lc-mapa" || d.tipo === "lc-resultado") {
+      var trabajo = d.trabajo || (d.resultado && d.resultado.trabajo);
+      if (d.tipo === "lc-progreso") { pintar(trabajo, d.texto); return; }
+      if (esperas[trabajo]) { var r = esperas[trabajo]; delete esperas[trabajo]; r(d); }
+      return;
+    }
+    if (d.tipo === "lc-error") {
+      $("t-boton").disabled = false;
+      $("estado").hidden = false; $("estado").className = "error-texto"; $("estado").textContent = "learningCloud: " + d.mensaje;
+      return;
+    }
+    if (d.tipo === "sarela-paquete") { mostrarPaquete(d); }
+  });
+
+  // ---------------------------------------------------------------- traer
+
+  $("t-boton").addEventListener("click", function () {
+    if (!lc) return;
+    this.disabled = true;
+    $("estado").hidden = false; $("estado").className = "apagado"; $("estado").textContent = "learningCloud está descargando la carpeta…";
+    aLearningCloud({tipo: "lc-importar"});
+  });
+
+  function mostrarPaquete(d) {
+    var f = d.ficheros || [];
+    if (!f.length || !f.every(function (x) { return x && typeof x.nombre === "string" && x.datos instanceof ArrayBuffer; })) return;
+    recibido = d;
+    var bytes = f.reduce(function (s, x) { return s + x.datos.byteLength; }, 0);
+    $("estado").textContent = "Recibido. Revísalo antes de subir.";
+    $("d-unidad").textContent = (d.origen && d.origen.unidad) || f[0].nombre;
+    $("d-actividades").textContent = f.length - 1;
+    $("d-tamano").textContent = (bytes / 1048576).toFixed(1).replace(".", ",");
+    var o = d.origen || {};
+    $("d-origen").textContent = o.proyecto ? "Origen: " + [o.proyecto.nombre].concat(o.ruta || []).join(" / ") : "";
+    var om = d.omitidos || [];
+    if (om.length) { $("d-omitidos").hidden = false; $("d-omitidos").textContent = (om.length === 1 ? "No se ha traído 1 elemento: " : "No se han traído " + om.length + " elementos: ") + om.join("; ") + "."; }
+    $("detalle").hidden = false;
+  }
+
+  $("subir").addEventListener("click", function () {
+    if (!recibido) return;
+    var boton = this; boton.disabled = true; boton.textContent = "Subiendo…";
+    var datos = new FormData();
+    recibido.ficheros.forEach(function (x) { datos.append("fichero", new Blob([x.datos], {type: "application/zip"}), x.nombre); });
+    var o = recibido.origen || {};
+    datos.append("origen", JSON.stringify({entorno: o.entorno, proyecto: o.proyecto, carpeta: o.carpeta, ruta: o.ruta}));
+    fetch("/importar", {method: "POST", body: datos, credentials: "same-origin"})
+      .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+      .then(function (res) {
+        var div = $("resultado"); div.hidden = false; $("detalle").hidden = true;
+        if (!res.ok) { div.className = "aviso"; div.textContent = "No se ha podido subir: " + (res.j.detail || "error"); boton.disabled = false; boton.textContent = "Subir a Sarela"; $("detalle").hidden = false; return; }
+        var p = res.j;
+        div.className = "aviso ok"; div.innerHTML = "";
+        var t = document.createElement("p"); t.style.margin = "0 0 6px";
+        t.textContent = "Subida como paquete " + p.id + ": «" + (p.titulo || p.nombre) + "», " + (p.lecciones || 0) + " lecciones, fuente de Author.";
+        div.appendChild(t);
+        if (p.notas) { var n = document.createElement("p"); n.className = "error-texto"; n.style.margin = "0 0 6px"; n.textContent = p.notas; div.appendChild(n); }
+        var a = document.createElement("a"); a.href = "/"; a.textContent = "Ir a Unidades y trabajos para procesarla"; div.appendChild(a);
+        recibido = null;
+      })
+      .catch(function () { boton.disabled = false; boton.textContent = "Subir a Sarela"; $("resultado").hidden = false; $("resultado").className = "aviso"; $("resultado").textContent = "No se ha podido subir: error de red."; });
+  });
+
+  // ---------------------------------------------------------------- enviar
+
+  function celda(trabajo) { var fila = document.querySelector('tr[data-trabajo="' + trabajo + '"]'); return fila && fila.querySelector(".estado-envio"); }
+
+  function pintar(trabajo, texto, resultado) {
+    var c = celda(trabajo); if (!c) return;
+    c.innerHTML = "";
+    if (resultado) {
+      var e = document.createElement("span");
+      e.className = "etiqueta e-" + ({enviado: "listo", conflicto: "pendiente"}[resultado.estado] || "error");
+      e.textContent = resultado.estado; c.appendChild(e);
+      if (resultado.url) { var a = document.createElement("a"); a.href = resultado.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = " abrir"; c.appendChild(a); }
+      c.appendChild(document.createElement("br"));
+    }
+    var s = document.createElement("span"); s.className = resultado && resultado.estado !== "enviado" ? "error-texto" : "apagado";
+    s.textContent = texto; c.appendChild(s);
+  }
+
+  document.querySelectorAll(".elegir").forEach(function (c) {
+    c.addEventListener("change", function () {
+      var n = document.querySelectorAll(".elegir:checked").length;
+      $("e-boton").disabled = !n;
+      $("e-boton").textContent = n ? "Enviar " + (n === 1 ? "la elegida" : "las " + n + " elegidas") : "Enviar las elegidas";
+    });
+  });
+
+  async function enviarUno(f) {
+    pintar(f.trabajo, "preparando los ficheros…");
+    var actividades = [];
+    for (var i = 0; i < f.actividades.length; i++) {
+      var a = f.actividades[i];
+      var r = await fetch("/learningcloud/actividad/" + f.trabajo + "/" + encodeURIComponent(a.fichero), {credentials: "same-origin"});
+      if (!r.ok) throw new Error("Sarela no ha podido preparar " + a.fichero + ".");
+      actividades.push({fichero: a.fichero, id: a.id, datos: await r.arrayBuffer()});
+    }
+    var ruta = f.origen.ruta && f.origen.ruta.length ? f.origen.ruta : null;
+    aLearningCloud({tipo: "lc-enviar", trabajo: f.trabajo, proyecto: f.destino.proyecto, ruta: ruta,
+                    carpeta_origen: ruta ? null : f.origen.carpeta, actividades: actividades},
+                   actividades.map(function (x) { return x.datos; }));
+    var m = await esperar(f.trabajo);
+    if (m.tipo === "lc-mapa") {
+      var u = await fetch("/learningcloud/unidad/" + f.trabajo, {method: "POST", credentials: "same-origin",
+        headers: {"Content-Type": "application/json"}, body: JSON.stringify({mapa: m.mapa})});
+      if (!u.ok) {
+        var detalle = ""; try { detalle = (await u.json()).detail; } catch (e) {}
+        m = {resultado: {trabajo: f.trabajo, estado: "error", carpeta: m.carpeta, url: m.url,
+             mensaje: "Las actividades están importadas, pero Sarela no ha podido preparar la unidad: " + (detalle || u.status) + "."}};
+      } else {
+        var datos = await u.arrayBuffer();
+        pintar(f.trabajo, "learningCloud está importando la unidad…");
+        aLearningCloud({tipo: "lc-unidad", trabajo: f.trabajo, nombre: f.unidad, datos: datos}, [datos]);
+        m = await esperar(f.trabajo);
+      }
+    }
+    return m.resultado;
+  }
+
+  if ($("e-boton")) $("e-boton").addEventListener("click", async function () {
+    var elegidas = Array.prototype.map.call(document.querySelectorAll(".elegir:checked"), function (c) { return porTrabajo[c.value]; });
+    if (!elegidas.length || !lc) return;
+    var lista = elegidas.map(function (f) {
+      return "· " + f.titulo + " → " + (f.destino.nombre || f.destino.proyecto) + (f.origen.ruta ? " / " + f.origen.ruta.join(" / ") : "");
+    }).join("\n");
+    if (!confirm("Se van a importar en learningCloud (" + lc + "):\n\n" + lista + "\n\n¿Seguir?")) return;
+    var boton = this; boton.disabled = true;
+    document.querySelectorAll(".elegir").forEach(function (c) { c.disabled = true; });
+    for (var i = 0; i < elegidas.length; i++) {
+      var f = elegidas[i], resultado;
+      try { resultado = await enviarUno(f); }
+      catch (err) { resultado = {trabajo: f.trabajo, estado: "error", mensaje: err.message}; }
+      pintar(f.trabajo, resultado.mensaje || "", resultado);
+      try {
+        await fetch("/learningcloud/resultado/" + f.trabajo, {method: "POST", credentials: "same-origin",
+          headers: {"Content-Type": "application/json"}, body: JSON.stringify(resultado)});
+      } catch (e) {}
+    }
+    boton.textContent = "Hecho";
+  });
+})();
+</script>
+{% endblock %}

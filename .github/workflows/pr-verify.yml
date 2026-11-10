@@ -1,0 +1,15 @@
+name: PR-VERIFY
+
+on:
+    pull_request:
+        branches-ignore:
+            - 'release/**'
+
+permissions: write-all
+
+
+jobs:
+    code-lint:
+        name: PR-VERIFY
+        uses: netexknowledge/.github/.github/workflows/pr-verify-reusable.yml@pr-verify-reusable#v1
+        secrets: inherit

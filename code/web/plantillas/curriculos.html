@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block titulo %}Currículos{% endblock %}
+{% block contenido %}
+<h1 class="s-titulo">Currículos</h1>
+<p class="s-subtitulo">El currículo oficial de cada comunidad, convertido a datos. Al asistente solo le llega el trozo de la materia y el curso de cada trabajo.</p>
+
+{% if not comunidades %}
+  <div class="aviso">Todavía no hay ningún currículo convertido.</div>
+{% else %}
+<div class="tarjeta">
+  <div class="cuerpo" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <div class="s-segmentado pestanas" role="tablist" aria-label="Comunidad" style="margin:0">
+      {% for c in comunidades %}
+      <a href="/curriculos?comunidad={{ c|urlencode }}" role="tab" aria-selected="{{ 'true' if c == comunidad else 'false' }}"
+         style="display:inline-flex;align-items:center;padding:0 14px;height:34px;border-radius:7px;text-decoration:none;font-weight:600;{% if c == comunidad %}background:var(--brand);color:var(--on-brand){% endif %}">{{ c }}</a>
+      {% endfor %}
+    </div>
+    <a class="boton claro" href="/curriculos/{{ comunidad|urlencode }}.xlsx" style="margin-left:auto">Descargar en Excel</a>
+  </div>
+</div>
+
+{% if extracto %}
+<div class="tarjeta" id="extracto">
+  <h2>Lo que recibe el asistente</h2>
+  <div class="cuerpo">
+    {% if extracto.ficha %}
+      <p style="margin:0 0 10px">{{ extracto.ficha.materia }} · cursos {{ extracto.ficha.cursos }} de {{ extracto.ficha.etapa }} ·
+        <a href="{{ extracto.ficha.url }}" target="_blank" rel="noopener">{{ extracto.ficha.norma }}</a>, {{ extracto.ficha.boletin }}.
+        <span class="apagado">Unos {{ (extracto.texto|length / 4)|round|int }} tokens.</span></p>
+      <pre style="white-space:pre-wrap;font-size:12.5px;max-height:560px;overflow:auto;background:var(--section);padding:12px;border-radius:8px">{{ extracto.texto }}</pre>
+    {% else %}
+      <p class="apagado">No hay currículo de esa materia en esa etapa.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="tarjeta">
+  <h2>Materias ({{ materias|length }})</h2>
+  <table>
+    <thead><tr><th>Etapa</th><th>Materia</th><th>Cursos: competencias · criterios · saberes</th></tr></thead>
+    <tbody>
+    {% for m in materias %}
+      <tr>
+        <td>{{ m.etapa }}</td>
+        <td><b>{{ m.nombre }}</b></td>
+        <td>
+          {% for c, n in m.cursos|dictsort %}
+            {% set primero = c.split('-')[0] %}
+            {% if m.id %}<a href="/curriculos?comunidad={{ comunidad|urlencode }}&etapa={{ m.etapa }}&materia={{ m.id }}&curso={{ primero }}#extracto"
+               style="margin-right:14px;white-space:nowrap">{% else %}<span style="margin-right:14px;white-space:nowrap">{% endif %}
+              {{ c }}.º: {{ n.competencias }} · {{ n.criterios }} · {{ n.saberes }}{% if not n.criterios %} <span class="apagado">(sin criterios)</span>{% endif %}
+            {% if m.id %}</a>{% else %}</span>{% endif %}
+          {% endfor %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="cuerpo">
+    <p class="apagado" style="margin:0">«Sin criterios»: en esas materias la maqueta del boletín no deja leer la tabla de criterios de forma fiable; el asistente recibe solo los saberes. Las materias de las unidades actuales están completas.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

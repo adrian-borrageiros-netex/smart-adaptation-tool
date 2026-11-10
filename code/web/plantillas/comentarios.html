@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block titulo %}Feedback recogido{% endblock %}
+{% block contenido %}
+<div class="tarjeta">
+  <h2>Feedback de los editores</h2>
+  <div class="cuerpo">
+    <p class="apagado" style="margin-bottom:6px">
+      Todo lo que han anotado los revisores, en un solo sitio. Es la lista de trabajo para
+      la próxima versión del procesador: cada observación aplicada se marca y deja de pedir
+      atención.
+    </p>
+  </div>
+  {% if comentarios %}
+  <table>
+    <thead><tr>
+      <th>Fecha</th><th>Trabajo</th><th>Encargo</th><th>Quién</th>
+      <th>Observación</th><th>Aplicado</th>
+    </tr></thead>
+    <tbody>
+    {% for c in comentarios %}
+      <tr>
+        <td class="apagado">{{ (c.creado_en or '')[:16].replace('T', ' ') }}</td>
+        <td><a href="/trabajo/{{ c.trabajo_id }}">#{{ c.trabajo_id }}</a></td>
+        <td class="apagado">{{ c.tipo }} → {{ c.destino }}</td>
+        <td>{{ c.autor or '—' }}</td>
+        <td>{{ c.texto }}</td>
+        <td>{% if c.aplicado %}<span class="etiqueta e-listo">sí</span>
+            {% else %}<span class="etiqueta e-pendiente">no</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="cuerpo"><p class="apagado">Todavía no hay observaciones.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

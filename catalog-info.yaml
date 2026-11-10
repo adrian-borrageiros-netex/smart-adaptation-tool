@@ -1,0 +1,30 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: smart-adaptation-tool-poc
+  description: "Herramienta para realizar adaptaciones curriculares y traducciones sobre contenido smartED"
+  owner: "smart"
+  tags: 
+    - "poc"
+    - "lang:python"
+  links:
+  - url: https://wiki.netexlearning.com/pages/viewpage.action?pageId=41653528
+    title: "Añadir links al componente"
+    icon: dashboard
+  annotations:
+    github.com/project-slug: netexknowledge/smart-adaptation-tool
+    backstage.io/techdocs-ref: dir:.
+    backstage.io/kubernetes-id: '["k8s-common-des","k8s-common-pre","k8s-common-pro","k8s-common-sandbox"]'
+    backstage.io/kubernetes-namespace: smart-default
+    backstage.io/kubernetes-label-selector: 'tags.datadoghq.com/service=smart-adaptation-tool'
+    datadoghq.com/dashboard-url: "https://p.datadoghq.eu/sb/bp8piidg4pqi13x4-4cccaaef244d16581c3734a3465332be?tpl_var_product=smart"
+
+spec:
+  type: service
+  lifecycle: experimental
+  system: "smart"
+  owner: "smart"
+  consumesApis: []
+  providesApis: []
+  dependsOn: []
+---
